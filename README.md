@@ -23,7 +23,7 @@ need dead tree repesentations of our data.
   (send-job job))
 
 ;; When no printer is specified, the system default is used. Also
-works with URLs.
+;; works with URLs.
 (let [job (job-map "http://coolwebsite.com/my_neat_document.pdf")]
   (send-job job))
 
