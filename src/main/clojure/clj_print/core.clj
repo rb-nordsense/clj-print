@@ -1,10 +1,9 @@
 (ns ^{:doc "Core print logic."
       :author "Roberto Acevedo"}
   clj-print.core
+  (:require [clj-print [doc-flavors :as doc-flavors]])
   (:import (java.io File FileInputStream FileNotFoundException)
            (javax.print Doc
-                        DocFlavor
-                        DocFlavor$INPUT_STREAM
                         DocPrintJob
                         PrintException
                         PrintService
@@ -26,15 +25,15 @@
 ;; extremely long names to specify the attributes of a document/print
 ;; request
 
-;; Naive unbounded job queue
-(def print-queue (Stack.))
+;; ;; Naive unbounded job queue
+;; (def print-queue (Stack.))
 
-(defn add-job
-  "Adds the job map to the job queue. Adds a map entry :queue-time
-   that represents the point in time at which the job was queued."
-  [job]
-  (doto ^Stack print-queue
-        (.push (-> job (assoc :queue-time (System/currentTimeMillis))))))
+;; (defn add-job
+;;   "Adds the job map to the job queue. Adds a map entry :queue-time
+;;    that represents the point in time at which the job was queued."
+;;   [job]
+;;   (doto ^Stack print-queue
+;;         (.push (-> job (assoc :queue-time (System/currentTimeMillis))))))
 
 (defn- printer-seq
   "Returns a seq of printers that supports the specified
@@ -61,6 +60,7 @@
 
 ;; CURSOR
 
+;; TODO: This is shit, only works for Files, needs to be expanded upon
 (defn- job-map
   "Returns a job-map that encapsulates the constituent parts of a print job.
 
@@ -80,7 +80,7 @@
                   instantiated (when the job is
                   submitted)"
   [f-path p-name & {:keys [doc-flavor doc-attrs job-attrs]
-                    :or {doc-flavor DocFlavor$INPUT_STREAM/AUTOSENSE
+                    :or {doc-flavor (:autosense doc-flavors/input-streams)
                          doc-attrs nil
                          job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
   (let [^PrintService service (get-printer p-name)
@@ -98,7 +98,8 @@
   [j]
   (let [{:keys [^DocPrintJob job ^String file-path doc-flavor doc-attrs job-attrs]} j]
     (try
-      (with-open [f-stream (FileInputStream. file-path)]
+      ;; TODO: WRONG, data may not always come from a File.
+      (with-open [f-stream (FileInputStream. file-path)] 
         (do
           (.print job (SimpleDoc. f-stream doc-flavor doc-attrs) job-attrs)
           (println (str "Job: " j "\nhas been submitted."))))
@@ -115,7 +116,7 @@
              (throw (FileNotFoundException. "The file cannot be found."))
              (with-open [f-stream (FileInputStream. f-path)]
                (let [p (get-printer p-name)
-                     doc (SimpleDoc. f-stream DocFlavor$INPUT_STREAM/AUTOSENSE nil)
+                     doc (SimpleDoc. f-stream (:autosense doc-flavors/input-streams) nil)
                      attrs (doto (HashPrintRequestAttributeSet.)
                              (.add MediaTray/MAIN))
                      job (.createPrintJob p)]
