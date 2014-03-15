@@ -4,6 +4,8 @@
   (:import (javax.print DocFlavor$INPUT_STREAM
                         DocFlavor$URL)))
 
+;; TODO: Add more flavors
+
 ;; These are all public static final in the sauce
 (defn input-stream
   "Returns a DocFlavor with the given MIME type and a

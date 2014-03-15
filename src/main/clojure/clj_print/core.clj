@@ -17,13 +17,7 @@
 
 ;; TODO: Resume at CURSOR
 ;; TODO: Use a bounded/concurrent queue structure
-;; TODO: Consider whether job-map contains sufficient data
-;; TODO: Cut down on type hinting where possible
-;; TODO: Establish workers for the queue
-;; TODO: Create mappings for the myriad of DocFlavors/Attributes that
-;; Java's printing API uses so that clients don't need to type out
-;; extremely long names to specify the attributes of a document/print
-;; request
+;; TODO: Move queuing to a separate ns
 
 ;; ;; Naive unbounded job queue
 ;; (def print-queue (Stack.))
@@ -35,7 +29,7 @@
 ;;   (doto ^Stack print-queue
 ;;         (.push (-> job (assoc :queue-time (System/currentTimeMillis))))))
 
-(defn- printer-seq
+(defn printer-seq
   "Returns a seq of printers that supports the specified
    DocFlavor and Attributes acquired from PrintServiceLookup.
    With no arguments, returns a seq of all printers that
@@ -44,7 +38,7 @@
   ([^DocFlavor flava ^AttributeSet attrs] ;; TODO: Do I need to hint this?
      (seq (PrintServiceLookup/lookupPrintServices flava attrs))))
 
-(defn- get-printer
+(defn get-printer
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
   ([] (PrintServiceLookup/lookupDefaultPrintService))
@@ -52,19 +46,20 @@
      (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] ;; Use doto because add is side-effectual
        (some (fn [^PrintService p] (if (= name (.getName p)) p)) (printer-seq nil attrs)))))
 
+;; TODO: Reflection here despite hinting...
 (defn- get-job
   "Returns a DocPrintJob object bound to the PrintService
    specified by p-name"
   [p-name]
-  (.. ^DocPrintJob (get-printer p-name) createPrintJob)) ;; No need for doto here since creatPrintJob is not side-effectual
+  (.. ^DocPrintJob (get-printer p-name) createPrintJob))
 
 ;; CURSOR
 
 ;; TODO: This is shit, only works for Files, needs to be expanded upon
-(defn- job-map
+(defn job-map
   "Returns a job-map that encapsulates the constituent parts of a print job.
 
-   :file-path   - The path to the file being
+   :doc-source  - The source of the data being
                   printed (supplied)
    :printer     - The name of the PrintService
                   returned for p-name
@@ -78,30 +73,44 @@
    :doc-attrs   - The attributes to be applied to
                   the Doc object when it is is
                   instantiated (when the job is
-                  submitted)"
-  [f-path p-name & {:keys [doc-flavor doc-attrs job-attrs]
-                    :or {doc-flavor (:autosense doc-flavors/input-streams)
-                         doc-attrs nil
-                         job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
+                  submitted)
+"
+  [doc-source p-name & {:keys [doc-flavor doc-attrs job-attrs]
+                        :or {doc-flavor nil
+                             doc-attrs nil
+                             job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
   (let [^PrintService service (get-printer p-name)
         the-job (get-job p-name)]
-    {:file-path f-path
+    {:doc-source doc-source
      :printer (.getName service)
      :job-attrs job-attrs
      :job the-job
      :doc-flavor doc-flavor
      :doc-attrs doc-attrs}))
 
+;; TODO: Finish this, one should be able to create a SimpleDoc without
+;; tying up the resource to be printed until the job is actually sent
+;; to the print service. Delay? For InputStreams, need to
+;; enclose (.print job doc job-attrs) in a (with-open) macro...
+
+;; (defn get-doc
+;;   "Returns a javax.print.Doc object for the print data in this
+;;    job map."
+;;   [j]
+;;   (let [{:keys [doc-source doc-flavor doc-attrs]}]
+;;     (try
+;;       (cond (.exists (File. doc-source)) (SimpleDoc. (FileInputStream. doc-source) (:autosense doc-flavors/input-streams) doc-attrs)))))
+
 (defn send-job
   "Returns a dead tree representation of the document specified
    in the job map (sends the print job to the printer)."
   [j]
-  (let [{:keys [^DocPrintJob job ^String file-path doc-flavor doc-attrs job-attrs]} j]
+  (let [{:keys [^DocPrintJob job ^String doc-source doc-flavor doc-attrs job-attrs]} j]
     (try
       ;; TODO: WRONG, data may not always come from a File.
-      (with-open [f-stream (FileInputStream. file-path)] 
+      (with-open [stream (FileInputStream. doc-source)] 
         (do
-          (.print job (SimpleDoc. f-stream doc-flavor doc-attrs) job-attrs)
+          (.print job (SimpleDoc. stream doc-flavor doc-attrs) job-attrs)
           (println (str "Job: " j "\nhas been submitted."))))
       (catch PrintException pe (.printStackTrace pe)))))
 
