@@ -1,7 +1,7 @@
 clj-print
 =======
 
-A Clojure that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API, because sometimes we
+A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API, because sometimes we
 need dead tree repesentations of our data.
 
 ## TODO
