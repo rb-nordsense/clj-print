@@ -3,6 +3,7 @@
   clj-print.core
   (:require [clj-print [doc-flavors :as doc-flavors]])
   (:import (java.io File FileInputStream FileNotFoundException)
+           (java.net URL)
            (javax.print Doc
                         DocPrintJob
                         PrintException
@@ -29,33 +30,32 @@
 ;;   (doto ^Stack print-queue
 ;;         (.push (-> job (assoc :queue-time (System/currentTimeMillis))))))
 
+
 (defn printer-seq
   "Returns a seq of printers that supports the specified
    DocFlavor and Attributes acquired from PrintServiceLookup.
    With no arguments, returns a seq of all printers that
    PrintServiceLookup is aware of."
-  ([] (printer-seq nil nil))
-  ([^DocFlavor flava ^AttributeSet attrs] ;; TODO: Do I need to hint this?
-     (seq (PrintServiceLookup/lookupPrintServices flava attrs))))
+  ([& {:keys [^DocFlavor flavor ^AttributeSet attrs] :or [flavor nil attrs nil]}] 
+     (seq (PrintServiceLookup/lookupPrintServices flavor attrs))))
 
-(defn get-printer
+(defn get-printer 
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
   ([] (PrintServiceLookup/lookupDefaultPrintService))
   ([name]
-     (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] ;; Use doto because add is side-effectual
+     (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
        (some (fn [^PrintService p] (if (= name (.getName p)) p)) (printer-seq nil attrs)))))
 
-;; TODO: Reflection here despite hinting...
+;; TODO: Catch exception when not a PrintService or let it bubble up?
 (defn- get-job
   "Returns a DocPrintJob object bound to the PrintService
-   specified by p-name"
-  [p-name]
-  (.. ^DocPrintJob (get-printer p-name) createPrintJob))
+   specified by service"
+  [^PrintService service]
+  (.. service createPrintJob))
 
 ;; CURSOR
 
-;; TODO: This is shit, only works for Files, needs to be expanded upon
 (defn job-map
   "Returns a job-map that encapsulates the constituent parts of a print job.
 
@@ -73,18 +73,17 @@
    :doc-attrs   - The attributes to be applied to
                   the Doc object when it is is
                   instantiated (when the job is
-                  submitted)
-"
+                  submitted)"
   [doc-source p-name & {:keys [doc-flavor doc-attrs job-attrs]
                         :or {doc-flavor nil
                              doc-attrs nil
                              job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
   (let [^PrintService service (get-printer p-name)
-        the-job (get-job p-name)]
+        job (get-job service)]
     {:doc-source doc-source
      :printer (.getName service)
      :job-attrs job-attrs
-     :job the-job
+     :job job
      :doc-flavor doc-flavor
      :doc-attrs doc-attrs}))
 
@@ -93,15 +92,17 @@
 ;; to the print service. Delay? For InputStreams, need to
 ;; enclose (.print job doc job-attrs) in a (with-open) macro...
 
-;; (defn get-doc
-;;   "Returns a javax.print.Doc object for the print data in this
-;;    job map."
-;;   [j]
-;;   (let [{:keys [doc-source doc-flavor doc-attrs]}]
-;;     (try
-;;       (cond (.exists (File. doc-source)) (SimpleDoc. (FileInputStream. doc-source) (:autosense doc-flavors/input-streams) doc-attrs)))))
+(defn get-doc
+  "Returns a javax.print.Doc object for the print data in this
+   job map."
+  [j]
+  (let [{:keys [^String doc-source doc-flavor doc-attrs]
+         :as stuff} j]
+    (try (SimpleDoc. (FileInputStream. doc-source) doc-flavor doc-attrs)
+         (catch Exception e
+           (SimpleDoc. (URL. doc-source) doc-flavor doc-attrs)))))
 
-(defn send-job
+(defn submit
   "Returns a dead tree representation of the document specified
    in the job map (sends the print job to the printer)."
   [j]

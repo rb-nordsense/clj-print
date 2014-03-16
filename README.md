@@ -15,7 +15,6 @@ need dead tree repesentations of our data.
 ## Usage
 
 ``` clojure
-
 (require '(clj-print (core :refer :all)))
 
 ;; Assumes printer name is known and that path leads to a file
@@ -26,7 +25,6 @@ need dead tree repesentations of our data.
 ;; works with URLs.
 (let [job (job-map "http://coolwebsite.com/my_neat_document.pdf")]
   (send-job job))
-
 ```
 
 More options can be passed to job-map to configure the job before it
