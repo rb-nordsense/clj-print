@@ -36,12 +36,14 @@
    DocFlavor and Attributes acquired from PrintServiceLookup.
    With no arguments, returns a seq of all printers that
    PrintServiceLookup is aware of."
+  {:added "1.0"}
   ([& {:keys [^DocFlavor flavor ^AttributeSet attrs] :or [flavor nil attrs nil]}] 
      (seq (PrintServiceLookup/lookupPrintServices flavor attrs))))
 
 (defn get-printer 
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
+  {:added "1.0"}
   ([] (PrintServiceLookup/lookupDefaultPrintService))
   ([name]
      (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
@@ -51,6 +53,7 @@
 (defn- get-job
   "Returns a DocPrintJob object bound to the PrintService
    specified by service"
+  {:added "1.0"}
   [^PrintService service]
   (.. service createPrintJob))
 
@@ -87,6 +90,8 @@
      :doc-flavor doc-flavor
      :doc-attrs doc-attrs}))
 
+;; TODO: Supersedes below, Maybe wrap get-doc in a delay and
+;; dereference it when the job is submitted? That should work...
 ;; TODO: Finish this, one should be able to create a SimpleDoc without
 ;; tying up the resource to be printed until the job is actually sent
 ;; to the print service. Delay? For InputStreams, need to
@@ -109,10 +114,10 @@
   (let [{:keys [^DocPrintJob job ^String doc-source doc-flavor doc-attrs job-attrs]} j]
     (try
       ;; TODO: WRONG, data may not always come from a File.
-      (with-open [stream (FileInputStream. doc-source)] 
-        (do
-          (.print job (SimpleDoc. stream doc-flavor doc-attrs) job-attrs)
-          (println (str "Job: " j "\nhas been submitted."))))
+      ;; (with-open [stream (FileInputStream. doc-source)]) 
+      (do
+        (.print job (get-doc j) job-attrs)
+        (pprint (str "Job: " j "\nhas been submitted.")))
       (catch PrintException pe (.printStackTrace pe)))))
 
 (defn -main [& args]
