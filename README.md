@@ -46,26 +46,26 @@ need dead tree repesentations of our data.
 
 ;; As well as the various attributes that the printer supports:
 (attributes (printer))
-;; (#<JobName Java Printing>
-;;  #<RequestingUserName racevedo>
-;;  #<CopiesSupported 1-9999>
-;;  #<Destination file:/c:/Users/racevedo/git/p3_clj/out.prn>
-;;  #<OrientationRequested portrait>
-;;  #<OrientationRequested landscape>
-;;  #<OrientationRequested reverse-landscape>
-;;  #<PageRanges 1-2147483647>
-;;  #<MediaSizeName na-letter>
-;;  #<MediaSizeName na-legal>
-;;  #<MediaSizeName invoice>
-;;  #<MediaSizeName executive>
-;;  #<MediaSizeName folio>
-;;  #<MediaSizeName b>
-;;  #<MediaSizeName na-9x11-envelope>
-;;  #<MediaSizeName na-5x7>
-;;  #<MediaSizeName na-8x10>
-;;  #<Win32MediaSize Postcard (4.5 x 6")>
-;;  #<Win32MediaSize 5.5 x 7">
-;;  #<MediaSizeName iso-a4>
+;; (#<JobName Java Printing>
+;;  #<RequestingUserName racevedo>
+;;  #<CopiesSupported 1-9999>
+;;  #<Destination file:/c:/Users/racevedo/git/p3_clj/out.prn>
+;;  #<OrientationRequested portrait>
+;;  #<OrientationRequested landscape>
+;;  #<OrientationRequested reverse-landscape>
+;;  #<PageRanges 1-2147483647>
+;;  #<MediaSizeName na-letter>
+;;  #<MediaSizeName na-legal>
+;;  #<MediaSizeName invoice>
+;;  #<MediaSizeName executive>
+;;  #<MediaSizeName folio>
+;;  #<MediaSizeName b>
+;;  #<MediaSizeName na-9x11-envelope>
+;;  #<MediaSizeName na-5x7>
+;;  #<MediaSizeName na-8x10>
+;;  #<Win32MediaSize Postcard (4.5 x 6")>
+;;  #<Win32MediaSize 5.5 x 7">
+;;  #<MediaSizeName iso-a4>
 ;; ... too many to list
 
 ;; Or be more specific (more coming soon), you can of
