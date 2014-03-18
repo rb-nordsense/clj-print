@@ -31,7 +31,7 @@
 ;;         (.push (-> job (assoc :queue-time (System/currentTimeMillis))))))
 
 
-(defn printer-seq
+(defn printers
   "Returns a seq of printers that supports the specified
    DocFlavor and Attributes acquired from PrintServiceLookup.
    With no arguments, returns a seq of all printers that
@@ -40,22 +40,44 @@
   ([& {:keys [^DocFlavor flavor ^AttributeSet attrs] :or [flavor nil attrs nil]}] 
      (seq (PrintServiceLookup/lookupPrintServices flavor attrs))))
 
-(defn get-printer 
+(defn printer 
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
   {:added "1.0"}
   ([] (PrintServiceLookup/lookupDefaultPrintService))
   ([name]
      (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
-       (some (fn [^PrintService p] (if (= name (.getName p)) p)) (printer-seq nil attrs)))))
+       (some (fn [^PrintService p] (if (= name (.getName p)) p)) (printers nil attrs)))))
+
+(defn status
+  "Returns a seq of this PrintService's status attributes."
+  {:added "1.0"}
+  [^PrintService p]
+  (-> p .getAttributes .toArray seq))
+
+(defn attributes
+  "Returns a flattened seq of this PrintService's supported
+  atributes, for all of its supported Attribute classes."
+  {:added "1.0"}
+  [^PrintService p]
+  ;; We don't care about DocFlavor or passing in AttributeSets, just use filter
+  (let [unflattened (for [c (.getSupportedAttributeCategories p)]
+                      (.getSupportedAttributeValues p c nil nil))] 
+    (->> unflattened (map (fn [e] (if (.isArray (type e)) (seq e) e))) flatten)))
+
+(defn trays
+  "Returns a seq of this PrintService's MediaTrays"
+  {:added "1.0"}
+  [^PrintService p]
+  (filter (fn [attr] (instance? MediaTray attr)) (attributes p)))
 
 ;; TODO: Catch exception when not a PrintService or let it bubble up?
-(defn- get-job
+(defn- job
   "Returns a DocPrintJob object bound to the PrintService
-   specified by service"
+   specified by p"
   {:added "1.0"}
-  [^PrintService service]
-  (.. service createPrintJob))
+  [^PrintService p]
+  (.. p createPrintJob))
 
 ;; CURSOR
 
@@ -81,10 +103,10 @@
                         :or {doc-flavor nil
                              doc-attrs nil
                              job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
-  (let [^PrintService service (get-printer p-name)
-        job (get-job service)]
+  (let [^PrintService p (printer p-name)
+        job (job p)]
     {:doc-source doc-source
-     :printer (.getName service)
+     :printer (.getName p)
      :job-attrs job-attrs
      :job job
      :doc-flavor doc-flavor
@@ -97,27 +119,27 @@
 ;; to the print service. Delay? For InputStreams, need to
 ;; enclose (.print job doc job-attrs) in a (with-open) macro...
 
-(defn get-doc
+(defn- get-doc
   "Returns a javax.print.Doc object for the print data in this
    job map."
-  [j]
+  [j-map]
   (let [{:keys [^String doc-source doc-flavor doc-attrs]
-         :as stuff} j]
+         :as stuff} j-map]
     (try (SimpleDoc. (FileInputStream. doc-source) doc-flavor doc-attrs)
          (catch Exception e
            (SimpleDoc. (URL. doc-source) doc-flavor doc-attrs)))))
 
 (defn submit
-  "Returns a dead tree representation of the document specified
+  "Requests a dead tree representation of the document specified
    in the job map (sends the print job to the printer)."
-  [j]
-  (let [{:keys [^DocPrintJob job ^String doc-source doc-flavor doc-attrs job-attrs]} j]
+  [j-map]
+  (let [{:keys [^DocPrintJob job ^String doc-source doc-flavor doc-attrs job-attrs]} j-map]
     (try
       ;; TODO: WRONG, data may not always come from a File.
       ;; (with-open [stream (FileInputStream. doc-source)]) 
       (do
-        (.print job (get-doc j) job-attrs)
-        (pprint (str "Job: " j "\nhas been submitted.")))
+        (.print job (get-doc j-map) job-attrs)
+        (println (str "Job: " j-map "\nhas been submitted.")))
       (catch PrintException pe (.printStackTrace pe)))))
 
 (defn -main [& args]
@@ -130,7 +152,7 @@
            (if (not (.exists (File. f-path)))
              (throw (FileNotFoundException. "The file cannot be found."))
              (with-open [f-stream (FileInputStream. f-path)]
-               (let [p (get-printer p-name)
+               (let [p (printer p-name)
                      doc (SimpleDoc. f-stream (:autosense doc-flavors/input-streams) nil)
                      attrs (doto (HashPrintRequestAttributeSet.)
                              (.add MediaTray/MAIN))
