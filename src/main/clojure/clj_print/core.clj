@@ -142,7 +142,12 @@
         (println (str "Job: " j-map "\nhas been submitted.")))
       (catch PrintException pe (.printStackTrace pe)))))
 
-(defn -main [& args]
+(defn -main
+  "Print a document from the CLI."
+  [& args]
+  ;; (if (seq args)
+  ;;   (let [jmap (job-map (nth args 0) (nth args 1))]
+  ;;     (submit jmap)))
   (println "Hello world!"))
 
 ;; Le deprecated
