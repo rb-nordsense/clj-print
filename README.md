@@ -9,8 +9,7 @@ need dead tree repesentations of our data.
 - Cut down on type hinting where possible
 - Establish workers for the queue
 - Create mappings for the myriad of DocFlavors/Attributes that
-- Java's printing API uses so that clients don't need to type out
-  extremely long names to specify the attributes of a document/print request
+- Java's printing API uses so that clients don't need to type out extremely long names to specify the attributes of a document/print request
 
 ## Usage
 
@@ -46,26 +45,26 @@ need dead tree repesentations of our data.
 
 ;; As well as the various attributes that the printer supports:
 (attributes (printer))
-;; (#<JobName Java Printing>
-;;  #<RequestingUserName racevedo>
-;;  #<CopiesSupported 1-9999>
-;;  #<Destination file:/c:/Users/racevedo/git/p3_clj/out.prn>
-;;  #<OrientationRequested portrait>
-;;  #<OrientationRequested landscape>
-;;  #<OrientationRequested reverse-landscape>
-;;  #<PageRanges 1-2147483647>
-;;  #<MediaSizeName na-letter>
-;;  #<MediaSizeName na-legal>
-;;  #<MediaSizeName invoice>
-;;  #<MediaSizeName executive>
-;;  #<MediaSizeName folio>
-;;  #<MediaSizeName b>
-;;  #<MediaSizeName na-9x11-envelope>
-;;  #<MediaSizeName na-5x7>
-;;  #<MediaSizeName na-8x10>
-;;  #<Win32MediaSize Postcard (4.5 x 6")>
-;;  #<Win32MediaSize 5.5 x 7">
-;;  #<MediaSizeName iso-a4>
+;; (#<JobName Java Printing>
+;;  #<RequestingUserName racevedo>
+;;  #<CopiesSupported 1-9999>
+;;  #<Destination file:/c:/Users/racevedo/git/p3_clj/out.prn>
+;;  #<OrientationRequested portrait>
+;;  #<OrientationRequested landscape>
+;;  #<OrientationRequested reverse-landscape>
+;;  #<PageRanges 1-2147483647>
+;;  #<MediaSizeName na-letter>
+;;  #<MediaSizeName na-legal>
+;;  #<MediaSizeName invoice>
+;;  #<MediaSizeName executive>
+;;  #<MediaSizeName folio>
+;;  #<MediaSizeName b>
+;;  #<MediaSizeName na-9x11-envelope>
+;;  #<MediaSizeName na-5x7>
+;;  #<MediaSizeName na-8x10>
+;;  #<Win32MediaSize Postcard (4.5 x 6")>
+;;  #<Win32MediaSize 5.5 x 7">
+;;  #<MediaSizeName iso-a4>
 ;; ... too many to list
 
 ;; Or be more specific (more coming soon), you can of
@@ -101,17 +100,17 @@ need dead tree repesentations of our data.
 
 ;; Actually printing things is easy. `job-map` Expects a path
 ;; or URL to a file:
-(let [jmap (job-map "/path/to/file" "ACME Co Printer 9000")]
-  (submit jmap))
+(let [job (job-map "/path/to/file" "ACME Co Printer 9000")]
+  (-> job submit))
 
 ;; When no printer is specified, the system default is used.
 ;; I am ironing out the kinks so that one does not have to 
 ;; explicitly specify the document source (i.e. input stream
 ;; vs URL vs byte array) when using anything other than a file
 ;; path
-(let [jmap (job-map "http://coolwebsite.com/my_neat_document.pdf"
+(let [job (job-map "http://coolwebsite.com/my_neat_document.pdf"
                     :doc-source (:autosense flavors/urls))]
-  (submit jmap))
+  (-> job submit))
 
 ```
 
