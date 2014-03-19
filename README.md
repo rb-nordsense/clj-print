@@ -101,17 +101,17 @@ need dead tree repesentations of our data.
 
 ;; Actually printing things is easy. `job-map` Expects a path
 ;; or URL to a file:
-(let [jmap (job-map "/path/to/file" "ACME Co Printer 9000")]
-  (submit jmap))
+(let [job (job-map "/path/to/file" "ACME Co Printer 9000")]
+  (-> job submit))
 
 ;; When no printer is specified, the system default is used.
 ;; I am ironing out the kinks so that one does not have to 
 ;; explicitly specify the document source (i.e. input stream
 ;; vs URL vs byte array) when using anything other than a file
 ;; path
-(let [jmap (job-map "http://coolwebsite.com/my_neat_document.pdf"
+(let [job (job-map "http://coolwebsite.com/my_neat_document.pdf"
                     :doc-source (:autosense flavors/urls))]
-  (submit jmap))
+  (-> job submit))
 
 ```
 

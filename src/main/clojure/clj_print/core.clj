@@ -134,7 +134,6 @@
 ;; to the print service. Delay? For InputStreams, need to
 ;; enclose (.print job doc job-attrs) in a (with-open) macro...
 
-
 ;; TODO: May not need this
 (defn- get-doc
   "Returns a javax.print.Doc object for the print data in this
