@@ -8,9 +8,7 @@ need dead tree repesentations of our data.
 - Consider whether job-map contains sufficient data
 - Cut down on type hinting where possible
 - Establish workers for the queue
-- Create mappings for the myriad of DocFlavors/Attributes that
-- Java's printing API uses so that clients don't need to type out
-  extremely long names to specify the attributes of a document/print request
+- Create mappings for the myriad of DocFlavors/Attributes
 
 ## Usage
 
