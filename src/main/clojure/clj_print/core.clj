@@ -141,6 +141,8 @@
   [doc-source doc-flavor doc-attrs]
   (SimpleDoc. doc-source doc-flavor doc-attrs))
 
+;; TODO: It looks like Win32PrintService.java will close the streams
+;; when it's done, check IPPrintService.java
 (defn- print-action
   "Returns a delay that, when dereferenced, will cause a job to be
    submitted to the print service. This allows for clients to queue
