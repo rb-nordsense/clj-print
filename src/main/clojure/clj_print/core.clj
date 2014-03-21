@@ -8,11 +8,14 @@
            (java.net URL)
            (javax.print Doc
                         DocPrintJob
+                        DocFlavor ;; Remove me!
                         PrintException
                         PrintService
                         PrintServiceLookup
                         SimpleDoc)
-           (javax.print.attribute AttributeSet
+           (javax.print.attribute Attribute
+                                  AttributeSet
+                                  DocAttributeSet
                                   HashAttributeSet
                                   HashPrintRequestAttributeSet)
            (javax.print.attribute.standard MediaTray
@@ -27,7 +30,7 @@
    With no arguments, returns a seq of all printers that
    PrintServiceLookup is aware of."
   {:added "1.0"}
-  ([& {:keys [^DocFlavor flavor ^AttributeSet attrs] :or [flavor nil attrs nil]}] 
+  ([& {:keys [^DocFlavor flavor ^AttributeSet attrs]}]
      (seq (PrintServiceLookup/lookupPrintServices flavor attrs))))
 
 (defn printer 
@@ -38,7 +41,7 @@
   ([name]
      (if (seq name)
        (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
-         (some (fn [^PrintService p] (if (= name (.getName p)) p)) (printers nil attrs)))
+         (some (fn [^PrintService p] (when (= name (.. p getName)) p)) (printers nil attrs)))
        (printer))))
 
 (defn status
@@ -52,7 +55,6 @@
   atributes, for all of its supported Attribute classes."
   {:added "1.0"}
   [^PrintService p]
-  ;; We don't care about DocFlavor or passing in AttributeSets, just use filter
   (let [unflattened (for [c (.. p getSupportedAttributeCategories)]
                       (.. p (getSupportedAttributeValues c nil nil)))] 
     (->> unflattened
@@ -90,7 +92,7 @@
   (condp = (parse-source doc-source)
     :file (:autosense flavors/input-streams)
     :url (:autosense flavors/urls)
-    nil nil))
+    nil))
 
 (defn job-map
   "Returns a job-map that encapsulates the constituent parts of a print job.
@@ -114,14 +116,12 @@
                         doc-flavor
                         doc-attrs
                         job-attrs]
-                 :or {p-name nil
-                      doc-flavor (flavor doc-source)
-                      doc-attrs nil
+                 :or {doc-flavor (flavor doc-source)
                       job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
   (let [^PrintService p (printer p-name)
         job (job p)]
     {:doc-source doc-source
-     :printer (.getName p)
+     :printer (.. p getName)
      :job-attrs job-attrs
      :job job
      :doc-flavor doc-flavor
