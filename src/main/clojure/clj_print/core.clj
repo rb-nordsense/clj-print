@@ -17,12 +17,36 @@
                                   AttributeSet
                                   DocAttributeSet
                                   HashAttributeSet
-                                  HashPrintRequestAttributeSet)
+                                  HashDocAttributeSet
+                                  HashPrintJobAttributeSet
+                                  HashPrintRequestAttributeSet
+                                  HashPrintServiceAttributeSet
+                                  DocAttribute
+                                  PrintJobAttribute
+                                  PrintRequestAttribute
+                                  PrintServiceAttribute)
            (javax.print.attribute.standard MediaTray
-                                           PrinterName))
+                                           PrinterName)
+           (javax.print.event PrintJobListener))
   (:gen-class))
 
-;; TODO: Move queuing to a separate ns
+(def ^{:doc "Basic PrintJobListener implementation."}
+  basic-job-listener
+  (reify PrintJobListener
+    (printDataTransferCompleted [this pje]
+      (println (str "Transfer complete: " pje)))
+    (printJobCompleted [this pje]
+      (println (str "Job complete: " pje)))
+    (printJobFailed [this pje]
+      (println (str "Job failed: " pje)))
+    (printJobCanceled [this pje]
+      (println (str "Job canceled: " pje)))
+    (printJobNoMoreEvents [this pje]
+      (println (str "No more events for: " pje)))
+    (printJobRequiresAttention [this pje]
+      (println (str "Job requires attention: " pje)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Printers;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn printers
   "Returns a seq of printers that supports the specified
@@ -67,15 +91,9 @@
   [^PrintService p]
   (filter (fn [attr] (instance? MediaTray attr)) (attributes p)))
 
-;; TODO: Catch exception when not a PrintService or let it bubble up?
-(defn- job
-  "Returns a DocPrintJob object bound to the PrintService
-   specified by p"
-  {:added "1.0"}
-  [^PrintService p]
-  (.. p createPrintJob))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Util ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- parse-source
+(defn- doc-source-type
   "Returns a keyword representative of the document source's
    type."
   {:since "1.0"}
@@ -89,11 +107,29 @@
    Returns nil if no suitable DocFlavor is found."
   {:since "1.0"}
   [doc-source]
-  (condp = (parse-source doc-source)
+  (condp = (doc-source-type doc-source)
     :file (:autosense flavors/input-streams)
     :url (:autosense flavors/urls)
     nil))
 
+;; TODO: Classes like javax.print.attribute.standard.Chromaticity
+;; implement more than one of the below interfaces, so wat do in that
+;; scenario?
+(defn setify [^clojure.lang.IPersistentSet s]
+  (if (seq s)
+    (let [el (first s)
+          t (type el)]
+      (cond
+       (instance? PrintRequestAttribute el) (HashPrintRequestAttributeSet. (into-array t s))
+       (instance? PrintServiceAttribute el) (HashPrintServiceAttributeSet. (into-array t s))
+       (instance? PrintJobAttribute el) (HashPrintJobAttributeSet. (into-array t s))
+       (instance? DocAttribute el) (HashDocAttributeSet. (into-array t s))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: Make the various AttributeSet implementations seqable, thus
+;; removing the need to have these things keyed in the map, since they
+;; can then be pretty printed from the SimpleDoc.
 (defn job-map
   "Returns a job-map that encapsulates the constituent parts of a print job.
 
@@ -112,6 +148,9 @@
                   the Doc object when it is is
                   instantiated (when the job is
                   submitted)"
+  ;; TODO: This throws a nullpointer exception if p-name cannot be
+  ;; resolved (since `printer` returns nil when it can't find a
+  ;; printer).
   [doc-source & {:keys [p-name
                         doc-flavor
                         doc-attrs
@@ -119,54 +158,46 @@
                  :or {doc-flavor (flavor doc-source)
                       job-attrs (doto (HashPrintRequestAttributeSet.) (.add MediaTray/MAIN))}}]
   (let [^PrintService p (printer p-name)
-        job (job p)]
+        job (.. p createPrintJob)]
     {:doc-source doc-source
-     :printer (.. p getName)
+     :printer p
      :job-attrs job-attrs
      :job job
      :doc-flavor doc-flavor
      :doc-attrs doc-attrs}))
 
-;; TODO: Supersedes below, Maybe wrap get-doc in a delay and
-;; dereference it when the job is submitted? That should work...
-;; TODO: Finish this, one should be able to create a SimpleDoc without
-;; tying up the resource to be printed until the job is actually sent
-;; to the print service. Delay? For InputStreams, need to
-;; enclose (.print job doc job-attrs) in a (with-open) macro...
-
-;; TODO: May not need this
-(defn- get-doc
+(defn make-doc
   "Returns a javax.print.Doc object for the print data in this
-   job map."
+   job map. SimpleDoc will throw an IllegalArgumentException if
+   the doc-flavor is not representative of the data pointed to
+   by doc-source."
+  {:added "1.0"}
   [doc-source doc-flavor doc-attrs]
   (SimpleDoc. doc-source doc-flavor doc-attrs))
 
-;; TODO: It looks like Win32PrintService.java will close the streams
-;; when it's done, check IPPrintService.java
+;; TODO: Win32PrintService.java will close the streams when it's done,
+;; check IPPrintService.java
 (defn- print-action
-  "Returns a delay that, when dereferenced, will cause a job to be
-   submitted to the print service. This allows for clients to queue
-   jobs while delaying resource locking until job submission."
+  "Calls print on the job, but considers the doc-source-type."
   [j-map]
   (let [{:keys [^DocPrintJob job
                 ^String doc-source
                 doc-flavor
                 doc-attrs
                 job-attrs]} j-map]
-    (condp = (parse-source doc-source)
-      :file (delay (with-open [fis (FileInputStream. doc-source)]
-                     (.. job (print (get-doc fis doc-flavor doc-attrs) job-attrs))))
-      :url (delay (.. job (print (get-doc (URL. doc-source) doc-flavor doc-attrs) job-attrs)))
+    (condp = (doc-source-type doc-source)
+      :file (with-open [fis (FileInputStream. doc-source)] ;; Close anyways
+              (.. job (print (make-doc fis doc-flavor doc-attrs) job-attrs)))
+      :url (.. job (print (make-doc (URL. doc-source) doc-flavor doc-attrs) job-attrs))
       nil (throw (RuntimeException. "Unrecognized document source")))))
 
 (defn submit
   "Requests a dead tree representation of the document specified
    in the job map (sends the print job to the printer)."
   [j-map]
-  (let [action (print-action j-map)]
+  (let [action (delay (print-action j-map))]
     (try
       @action
-      (println (str "Job:\n" (with-out-str (pprint j-map)) "has been submitted."))
       (catch PrintException pe (.. pe printStackTrace)))))
 
 (defn -main [& args]
