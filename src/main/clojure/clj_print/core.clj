@@ -96,8 +96,9 @@
     :url (:autosense flavors/urls)
     nil))
 
-(defn setify
-  "Takes a Clojure set and returns an Attribute"
+(defn- setify
+  "Takes a Clojure set and returns an AttributeSet implementation
+   based on bound."
   [^clojure.lang.IPersistentSet s bound]
   (if (seq s)
     (let [el (first s)
@@ -111,17 +112,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol IPrintable 
-  (submit [this & {:keys [s-attrs]}] "Submits the IPrintable for printing, with optional service attributes."))
+  (submit
+    [this & {:keys [s-attrs]}]
+    "Submits the IPrintable for printing, with optional service attributes."))
 
 ;; TODO: Only allow maps
 (defrecord JobMap [doc printer job] 
   IPrintable
   (submit [this & {:keys [s-attrs]}]
-    (let [{:keys [attrs obj]} job
-          sdoc (make-doc (:source doc) (:flavor doc) (:attrs doc))]
+    (let [{:keys [attrs ^DocPrintJob obj]} job
+          sdoc (make-doc (:source doc)
+                         (:flavor doc)
+                         (:attrs doc))] ;; TODO: bleh destructure this
       (.. obj (print @sdoc s-attrs)))))
 
-;; TODO: Should printer be optional?
+;; TODO: Create auxiliary fns like job-params/doc-params?
+
+;; TODO: Should printer be optional? If I create these, I can use rest
+;; params and avoid instantiating PersistentHashSets (but then I can't
+;; use literals, hmm)
+
 (defn make-jobmap [doc & {:keys [printer attrs]
                           :or {printer (printer)
                                attrs (setify #{MediaTray/MAIN} :job)}}]
@@ -151,31 +161,6 @@
                    :url (URL. source)
                    nil)]
     (delay (SimpleDoc. resource flavor attrs))))
-
-;; TODO: Win32PrintService.java will close the streams when it's done,
-;; check IPPrintService.java
-;; (defn- print-action
-;;   "Calls print on the job, but considers the doc-source-type."
-;;   [j-map]
-;;   (let [{:keys [^DocPrintJob job
-;;                 ^String doc-source
-;;                 doc-flavor
-;;                 doc-attrs
-;;                 job-attrs]} j-map]
-;;     (condp = (doc-source-type doc-source)
-;;       :file (with-open [fis (FileInputStream. doc-source)] ;; Close anyways
-;;               (.. job (print (make-doc fis doc-flavor doc-attrs) job-attrs)))
-;;       :url (.. job (print (make-doc (URL. doc-source) doc-flavor doc-attrs) job-attrs))
-;;       nil (throw (RuntimeException. "Unrecognized document source")))))
-
-;; (defn submit
-;;   "Requests a dead tree representation of the document specified
-;;    in the job map (sends the print job to the printer)."
-;;   [j-map]
-;;   (let [action (delay (print-action j-map))]
-;;     (try
-;;       @action
-;;       (catch PrintException pe (.. pe printStackTrace)))))
 
 ;; (defn -main [& args]
 ;;   (if (seq args)
