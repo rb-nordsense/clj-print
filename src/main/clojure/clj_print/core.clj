@@ -160,7 +160,7 @@
                    :file (FileInputStream. source)
                    :url (URL. source)
                    nil)]
-    (delay (SimpleDoc. resource flavor attrs))))
+    (delay (SimpleDoc. resource flavor attrs)))) ;; TODO: Do I need the caching provided by this?
 
 ;; (defn -main [& args]
 ;;   (if (seq args)
