@@ -1,0 +1,179 @@
+(ns ^{:doc "Core print logic."
+      :author "Roberto Acevedo"}
+  clj-print.core
+  (:require [clj-print [doc-flavors :as flavors]]
+            [clojure.java [io :as io]]
+            [clojure.pprint :refer [pprint]])
+  (:import (java.io File FileInputStream FileNotFoundException)
+           (java.net URL)
+           (javax.print DocPrintJob
+                        DocFlavor 
+                        PrintException
+                        PrintService
+                        PrintServiceLookup
+                        SimpleDoc)
+           (javax.print.attribute AttributeSet
+                                  HashAttributeSet
+                                  HashDocAttributeSet
+                                  HashPrintJobAttributeSet
+                                  HashPrintServiceAttributeSet
+                                  DocAttribute
+                                  PrintJobAttribute
+                                  PrintRequestAttribute
+                                  PrintServiceAttribute)
+           (javax.print.attribute.standard Copies
+                                           Chromaticity
+                                           MediaTray
+                                           OrientationRequested
+                                           PrinterName
+                                           PrintQuality))
+  (:gen-class))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Printers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn printers
+  "Returns a seq of printers that supports the specified
+   DocFlavor and Attributes acquired from PrintServiceLookup.
+   With no arguments, returns a seq of all printers that
+   PrintServiceLookup is aware of."
+  {:added "1.0"}
+  ([& {:keys [^DocFlavor flavor ^AttributeSet attrs]}]
+     (seq (PrintServiceLookup/lookupPrintServices flavor attrs))))
+
+(defn printer 
+  "Returns the printer with the specified name from PrintServiceLookup.
+   With no arguments, returns the system default printer."
+  {:added "1.0"}
+  ([] (PrintServiceLookup/lookupDefaultPrintService))
+  ([name]
+     (if (seq name)
+       (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
+         (some (fn [^PrintService p] (when (= name (.. p getName)) p)) (printers nil attrs)))
+       (printer))))
+
+(defn status
+  "Returns a seq of this PrintService's status attributes."
+  {:added "1.0"}
+  [^PrintService p]
+  (-> p .getAttributes .toArray seq))
+
+;; TODO: Is this the best way to do this?
+(defn attributes
+  "Returns a flattened seq of this PrintService's supported
+  atributes, for all of its supported Attribute classes."
+  {:added "1.0"}
+  [^PrintService p]
+  (let [unflattened (for [c (.. p getSupportedAttributeCategories)]
+                      (.. p (getSupportedAttributeValues c nil nil)))] 
+    (->> unflattened
+         (map (fn [e] (if (.. (type e) isArray) (seq e) e)))
+         flatten))) ;; TODO: Reflection
+
+(defn trays
+  "Returns a seq of this PrintService's MediaTrays"
+  {:added "1.0"}
+  [^PrintService p]
+  (filter (fn [attr] (instance? MediaTray attr)) (attributes p)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Util ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn- choose-source-key
+  "Returns a keyword representative of the document source's
+   type."
+  {:since "1.0"}
+  [src]
+  (cond (try (.. (io/file src) exists) (catch Throwable t)) :file
+        (try (URL. src) (catch Throwable t)) :url
+        :else nil))
+
+(defn- choose-flavor
+  "Attempts to guess the appropriate DocFlavor for the document.
+   Returns nil if no suitable DocFlavor is found."
+  {:since "1.0"}
+  [src]
+  (condp = (choose-source-key src)
+    :file (:autosense flavors/input-streams)
+    :url (:autosense flavors/urls)
+    nil))
+
+(defn- setify
+  "Takes a Clojure set and returns an AttributeSet implementation
+   based on bound."
+  [^clojure.lang.IPersistentSet s bound]
+  (if (seq s)
+    (let [el (first s)
+          t (type el)]
+      (condp = bound
+        :service (HashPrintServiceAttributeSet. (into-array t s))
+        :job (HashPrintJobAttributeSet. (into-array t s))
+        :doc (HashDocAttributeSet. (into-array t s))
+        nil))))
+
+(defn make-doc
+  "Returns a javax.print.Doc object for the print data in this
+   job map. SimpleDoc will throw an IllegalArgumentException if
+   the doc-flavor is not representative of the data pointed to
+   by doc-source."
+  {:added "1.0"}
+  [doc-map]
+  (let [{src :src flavor :flavor attrs :attrs
+         :or {flavor (choose-flavor src)
+              attrs (-> #{MediaTray/MAIN} (setify :doc))}} doc-map ;; Pretty sure I need this
+              resource (condp = (choose-source-key src)
+                         :file (FileInputStream. src)
+                         :url (URL. src)
+                         nil)]
+    (delay (SimpleDoc. resource flavor (setify attrs :doc))))) ;; TODO: Do I need the caching provided by this?
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol IPrintable
+  (submit [this] 
+    "Submits the IPrintable for printing."))
+
+;; TODO: Only allow maps
+(defrecord JobMap [doc printer job] 
+  IPrintable
+  (submit [this]
+    (let [{:keys [^DocPrintJob obj attrs]} job
+          sdoc (make-doc doc)] 
+      (.. obj (print @sdoc attrs)))))
+
+;; TODO: Create auxiliary fns like job-params/doc-params?
+
+;; TODO: Should printer be optional? If I create these, I can use rest
+;; params and avoid instantiating PersistentHashSets (but then I can't
+;; use literals, hmm)
+
+(defn make-jobmap [doc & {:keys [printer attrs]
+                          :or {printer (printer)
+                               attrs (setify #{MediaTray/MAIN} :job)}}]
+  (->JobMap doc printer {:obj (.. printer createPrintJob)
+                         :attrs attrs}))
+
+(comment "A JobMap might look something like this:"
+         {:doc {:source "path"
+                :flavor (:autosense flavors/input-streams)
+                :attrs #{Chromaticity/MONOCHROME
+                         PrintQuality/HIGH
+                         OrientationRequested/PORTRAIT}}
+          :printer (printer "\\\\srqprint\\2WSouth-Prt3")
+          :attrs #{(Copies. 5) MediaTray/MAIN}})
+
+;; (defn -main [& args]
+;;   (if (seq args)
+;;     (doseq [v args]
+;;       (let [{:keys [doc-source p-name]} (read-string v)
+;;             job (job-map doc-source :p-name p-name)]
+;;         (-> job submit)))))
+
+;; This also works!!! Sort of, it causes my printer at home to start
+;; spitting out a bunch of blank pages, not sure why that is yet. 
+(comment (let [f (File. "/Users/Roberto/Dropbox/docs/pdf/semi-log-graph-paper.pdf")
+               b (byte-array (.length f))]
+           (with-open [s (Socket. "10.0.1.14" 9100)
+                       s-stream (.getOutputStream s)
+                       f-stream (FileInputStream. f)]
+             (.read f-stream b)
+             (.write s-stream b)
+             (.flush s-stream))))

@@ -97,24 +97,20 @@ need dead tree repesentations of our data.
 ;;  #<Win32MediaTray Recycled>
 ;;  #<Win32MediaTray Letterhead>)
 
-;; Actually printing things is easy. `job-map` Expects a path
-;; or URL to a file:
-(let [job (job-map "/path/to/file" "ACME Co Printer 9000")]
-  (-> job submit))
-
-;; When no printer is specified, the system default is used.
-;; I am ironing out the kinks so that one does not have to 
-;; explicitly specify the document source (i.e. input stream
-;; vs URL vs byte array) when using anything other than a file
-;; path
-(let [job (job-map "http://coolwebsite.com/my_neat_document.pdf"
-                    :doc-source (:autosense flavors/urls))]
-  (-> job submit))
+;; Actually printing things is easy. `job-map` Expects a nested map
+;; formatted as shown below (some parameters are optional, see docs):
+(-> (job {:doc {:source "/path/to/doc.pdf"
+                :flavor (flavors/input-streams :autosense)}
+          :printer (printer :default)
+          :attrs #{MediaTray/MAIN
+                   Chromaticity/MONOCHROME
+                   PrintQuality/HIGH
+                   OrientationRequested/PORTRAIT}
+          :listener listeners/basic}) submit)
 
 ```
 
-More options can be passed to job-map to configure the job before it
-is sent off. This project is still extremely alpha.
+This project is still very alpha.
 
 ## License
 

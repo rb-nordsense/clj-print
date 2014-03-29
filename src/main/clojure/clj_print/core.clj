@@ -2,7 +2,7 @@
       :author "Roberto Acevedo"}
   clj-print.core
   (:require [clj-print [doc-flavors :as flavors]
-                       [listeners :as listeners]]
+             [listeners :as listeners]]
             [clojure.java [io :as io]]
             [clojure.pprint :refer [pprint]])
   (:import (java.io File FileInputStream FileNotFoundException)
@@ -99,7 +99,19 @@
     :url (:autosense flavors/urls)
     nil))
 
-(defn -make-doc
+(defn- make-set
+  "Takes a Clojure set and returns an AttributeSet implementation
+   based on bound."
+  [^clojure.lang.IPersistentSet s bound]
+  (if (seq s)
+    (condp = bound        
+      :service (HashPrintServiceAttributeSet. (into-array PrintServiceAttribute s))
+      :job (HashPrintJobAttributeSet. (into-array PrintJobAttribute s))
+      :doc (HashDocAttributeSet. (into-array DocAttribute s))
+      :request (HashPrintRequestAttributeSet. (into-array PrintRequestAttribute s))
+      nil)))
+
+(defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
    job map. SimpleDoc will throw an IllegalArgumentException if
    the doc-flavor is not representative of the data pointed to
@@ -109,25 +121,13 @@
   (let [{^String source :source} doc-map
         {:keys [flavor attrs]
          :or {flavor (choose-flavor source)
-              attrs (-> #{MediaTray/MAIN} (make-set :doc))}} doc-map ;; Pretty sure I need this
+              attrs #{MediaTray/MAIN}}} doc-map ;; Pretty sure I need this
               resource (condp = (choose-source-key source)
                          :file (FileInputStream. source)
                          :url (URL. source)
                          nil)]
     ;; TODO: Do I need the caching provided by this?
-    (delay (SimpleDoc. resource flavor (make-set attrs :doc)))))
-
-(defn- make-set
-  "Takes a Clojure set and returns an AttributeSet implementation
-   based on bound."
-  [^clojure.lang.IPersistentSet s bound]
-  (if (seq s)    
-    (condp = bound        
-      :service (HashPrintServiceAttributeSet. (into-array PrintServiceAttribute s))
-      :job (HashPrintJobAttributeSet. (into-array PrintJobAttribute s))
-      :doc (HashDocAttributeSet. (into-array DocAttribute s))
-      :request (HashPrintRequestAttributeSet. (into-array PrintRequestAttribute s))
-      nil)))
+    (delay (SimpleDoc. resource flavor (-> attrs (make-set :doc))))))
 
 (defn- valid-attrs
   "Returns true if all of the Attribute objects in
