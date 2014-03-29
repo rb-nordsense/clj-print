@@ -84,17 +84,17 @@
   "Returns a keyword representative of the document source's
    type."
   {:since "1.0"}
-  [src]
-  (cond (try (.. (io/file src) exists) (catch Throwable t)) :file
-        (try (URL. src) (catch Throwable t)) :url
+  [source]
+  (cond (try (.. (io/file source) exists) (catch Throwable t)) :file
+        (try (URL. source) (catch Throwable t)) :url
         :else nil))
 
 (defn- choose-flavor
   "Attempts to guess the appropriate DocFlavor for the document.
    Returns nil if no suitable DocFlavor is found."
   {:since "1.0"}
-  [src]
-  (condp = (choose-source-key src)
+  [source]
+  (condp = (choose-source-key source)
     :file (:autosense flavors/input-streams)
     :url (:autosense flavors/urls)
     nil))
@@ -158,6 +158,25 @@
 ;;  :attrs #{(Copies. 5) MediaTray/MAIN}
 ;;  :listener listeners/basic}
 
+(defprotocol ISubmit
+  "Protocl to be used by implementations of a JobSpec that
+   supports submission to a PrintService."
+  (submit [this]))
+
+(defprotocol INotify
+  "Protocol to be used by implementations that inform on
+   the submission of a job."
+  (notify [this]))
+
+(defrecord JobSpec [doc printer job attrs listener]
+  ISubmit
+  (submit [this]
+    (let [{{obj :obj} :doc} this
+          {:keys [^DocPrintJob job attrs]} this]
+      (.. job (print @obj (make-set attrs :request)))))
+  INotify
+  (notify [this] (println (str "Job:n" (with-out-str (pprint this) "submitted.")))))
+
 (defn job
   "Returns a job-spec map that is the result of
    assoc'ing required values to it. The values are:
@@ -177,18 +196,19 @@
   {:since "0.0.1"}
   [job-spec]
   (if (:doc job-spec)
-    (let [{:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
+    (let [{{doc-attrs :attrs} :doc} job-spec
+          {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
            :or {printer (printer :default)
                 attrs #{MediaTray/MAIN}
                 listener listeners/basic}} job-spec]
-      (if (and (valid-attrs (:attrs (:job job-spec)) :doc)
+      (if (and (valid-attrs doc-attrs :doc)
                (valid-attrs attrs :job))
-        {:doc (assoc doc :obj (make-doc doc))
-         :printer printer
-         :attrs attrs
-         :listener listener
-         :job (doto (.. printer createPrintJob)
-                (.addPrintJobListener listener))}))))
+        (map->JobSpec {:doc (assoc doc :obj (make-doc doc))
+                       :printer printer
+                       :attrs attrs
+                       :listener listener
+                       :job (doto (.. printer createPrintJob)
+                              (.addPrintJobListener listener))})))))
 
 (defn submit
   "Submits the job object in job-spec for printing."
