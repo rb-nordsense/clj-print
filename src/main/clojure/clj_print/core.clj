@@ -130,7 +130,7 @@
     ;; TODO: Do I need the caching provided by this?
     (delay (SimpleDoc. resource flavor (-> attrs (make-set :doc))))))
 
-(defn- valid-attrs
+(defn- valid-attrs?
   "Returns true if all of the Attribute objects in
    attrs are bounded by the type specified by k.
    Valid keywords for k are:
@@ -148,7 +148,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;  A JobMap might look something like this:
+;;  A JobSpec might look something like this:
 ;; 
 ;; {:doc {:source "/path/to/doc"
 ;;        :flavor (:autosense flavors/input-streams)
@@ -157,32 +157,48 @@
 ;;                 OrientationRequested/PORTRAIT}}
 ;;  :printer (printer "HP_Color_LaserJet_CP3505")
 ;;  :attrs #{(Copies. 5) MediaTray/MAIN}
-;;  :listener listeners/basic}
+;;  :listener SimpleJobListener}
 
-(defprotocol ISubmit
-  "Protocl to be used by implementations of a JobSpec that
-   supports submission to a PrintService."
-  (submit [this]))
+(defprotocol ISpoolable
+  "This protocol defines a contract that states the
+   responsibilities of any implementation that wishes
+   to be considered 'spoolable.' For an implementation
+   to be spoolable, it must be able to do the following:"
+  (submit [this]) ;; Submit the job 
+  (add-listener [this listener])) ;; Attach an event listener
 
-(defprotocol IListen
-  "Protocol to be used by implementations of a JobSpec that
-   append listeners to the actual DocPrintJob object. "
-  (attach-listener [this]))
+;; (defprotocol IBlock
+;;   "This protcol specifies methods that a PrintsService may
+;;    implement to allow clients to block/unblock the service."
+;;   (block [this])
+;;   (unblock [this]))
 
-;; (defprotocol INotify
-;;   "Protocol to be used by implementations that inform on
-;;    the submission of a job."
-;;   (info [this]))
-
-(defrecord JobSpec [doc printer job attrs listener]
-  ISubmit
+(defrecord JobSpec [doc printer job attrs]
+  ISpoolable
   (submit [this]
     (let [{{obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this]
-      (.. job (print @obj (make-set attrs :request))))))
+      (.. job (print @obj (make-set attrs :request)))))
+  (add-listener [this listener]
+    (if-let [{job :job} this]
+      (do (doto job (.addPrintJobListener listener))
+          (assoc this :listener listener))
+      (throw IllegalStateException "No DocPrintJob keyed at :job."))))
 
-(defn job
-  "Returns a job-spec map that is the result of
+
+
+;; (defrecord SimpleMultiDoc [this]
+;;   javax.print.MultiDoc
+;;   (getDoc [this] this)
+;;   (next [this]))
+
+;; TODO: Need to be able to ensure that the PrintService does not
+;; process incoming jobs until it has finished processing the MultiDoc
+;; (all calls to print on DocPrintJob objects dispensed by it should
+;; block until the the current job signals completion/no more events).
+
+(defn make-job
+  "Returns a JobSpec map that is the result of
    assoc'ing required values to it. The values are:
 
    1. A SimpleDoc object (wrapped in a Delay) made from
@@ -198,32 +214,23 @@
    3. A basic PrintJobListener that prints any events that occur
    on the DocPrintJob."
   {:since "0.0.1"}
-  [job-spec]
-  (if (:doc job-spec)
-    (let [{{doc-attrs :attrs} :doc} job-spec
+  [spec]
+  (if (:doc spec)
+    (let [{{doc-attrs :attrs} :doc} spec
           {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
            :or {printer (printer :default)
-                attrs #{MediaTray/MAIN}
-                listener listeners/basic}} job-spec]
-      (if (and (valid-attrs doc-attrs :doc)
-               (valid-attrs attrs :job))
-        (map->JobSpec {:doc (assoc doc :obj (make-doc doc))
-                       :printer printer
-                       :attrs attrs
-                       :listener listener
-                       :job (doto (.. printer createPrintJob)
-                              (.addPrintJobListener listener))})))))
-
-(defn submit
-  "Submits the job object in job-spec for printing."
-  {:since "0.0.1"}
-  [job-spec]
-  (let [{{obj :obj} :doc} job-spec
-        {:keys [^DocPrintJob job attrs]} job-spec]
-    (.. job (print @obj (make-set attrs :request)))))
+                attrs #{MediaTray/MAIN}}} spec
+          maybe-listen #(if listener (add-listener % listener) %)]
+      (if (and (valid-attrs? doc-attrs :doc)
+               (valid-attrs? attrs :job))
+        (-> (map->JobSpec {:doc (assoc doc :obj (make-doc doc))
+                           :printer printer
+                           :attrs attrs
+                           :job (.. printer createPrintJob)})
+            maybe-listen)))))
 
 (defn -main [& args]
   (if (seq args)
     (doseq [v args]
-      (let [job-spec (read-string v)]
-        (-> (job job-spec) submit)))))
+      (let [spec (read-string v)]
+        (-> (make-job spec) submit)))))

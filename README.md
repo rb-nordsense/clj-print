@@ -1,14 +1,12 @@
 clj-print
 =======
 
-A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API, because sometimes we
-need dead tree repesentations of our data.
+A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API.
 
 ## TODO
-- Consider whether job-map contains sufficient data
+- Make jobs identifiable/comparable so that they can be searched for
 - Cut down on type hinting where possible
-- Establish workers for the queue
-- Create mappings for the myriad of DocFlavors/Attributes
+
 
 ## Usage
 
@@ -31,8 +29,8 @@ need dead tree repesentations of our data.
 ;; #<Win32PrintService Win32 Printer : \\SRQPRINT\2WColor-PRT2_SA>
 
 ;; You can also get the system default printer by calling
-;; `printer` with no arguments:
-(printer)
+;; `printer` with the :default key
+(printer :default)
 ;; #<Win32PrintService Win32 Printer : \\srqprint\2WSouth-Prt3>
 
 ;; You can get a status seq for any registered printer:
@@ -109,8 +107,6 @@ need dead tree repesentations of our data.
           :listener listeners/basic}) submit)
 
 ```
-
-This project is still very alpha.
 
 ## License
 
