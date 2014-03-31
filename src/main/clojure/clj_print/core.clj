@@ -2,9 +2,10 @@
       :author "Roberto Acevedo"}
   clj-print.core
   (:require [clj-print [doc-flavors :as flavors]
-             [listeners :as listeners]]
+                       [listeners :as listeners]]
             [clojure.java [io :as io]]
-            [clojure.pprint :refer [pprint]])
+            [clojure.pprint :refer [pprint]]
+            [taoensso.timbre :as timbre])
   (:import (java.io File FileInputStream FileNotFoundException)
            (java.net URL)
            (javax.print DocPrintJob
@@ -163,19 +164,22 @@
    supports submission to a PrintService."
   (submit [this]))
 
-(defprotocol INotify
-  "Protocol to be used by implementations that inform on
-   the submission of a job."
-  (notify [this]))
+(defprotocol IListen
+  "Protocol to be used by implementations of a JobSpec that
+   append listeners to the actual DocPrintJob object. "
+  (attach-listener [this]))
+
+;; (defprotocol INotify
+;;   "Protocol to be used by implementations that inform on
+;;    the submission of a job."
+;;   (info [this]))
 
 (defrecord JobSpec [doc printer job attrs listener]
   ISubmit
   (submit [this]
     (let [{{obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this]
-      (.. job (print @obj (make-set attrs :request)))))
-  INotify
-  (notify [this] (println (str "Job:n" (with-out-str (pprint this) "submitted.")))))
+      (.. job (print @obj (make-set attrs :request))))))
 
 (defn job
   "Returns a job-spec map that is the result of
