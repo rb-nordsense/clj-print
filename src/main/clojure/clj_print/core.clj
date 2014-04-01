@@ -162,36 +162,52 @@
 (defprotocol ISpoolable
   "This protocol defines a contract that states the
    responsibilities of any implementation that wishes
-   to be considered 'spoolable.' For an implementation
+   to be considered 'spoolable,' which implies that it
+   can be queued for later processing such that it is
+   another process' resonsibility to handle the ISpoolable
+   and block until it has been processed. For an implementation
    to be spoolable, it must be able to do the following:"
   (submit [this]) ;; Submit the job 
-  (add-listener [this listener])) ;; Attach an event listener
-
-;; (defprotocol IBlock
-;;   "This protcol specifies methods that a PrintsService may
-;;    implement to allow clients to block/unblock the service."
-;;   (block [this])
-;;   (unblock [this]))
+  (add-listener [this listener])) ;; Attach an event listener that
+                                  ;; returns a value when the process is complete
 
 (defrecord JobSpec [doc printer job attrs]
   ISpoolable
   (submit [this]
-    (let [{{obj :obj} :doc} this
-          {:keys [^DocPrintJob job attrs]} this]
-      (.. job (print @obj (make-set attrs :request)))))
+    (cond
+     (:doc this) (let [{{obj :obj} :doc} this
+                       {:keys [^DocPrintJob job attrs]} this]
+                   (.. job (print @obj (make-set attrs :request))))
+     (:docs this) (let [{docs :docs ^PrintService printer :printer} this]
+                    (for [d docs]
+                      [(make-doc d) (.. printer createPrintJob)]))
+     :else nil))
   (add-listener [this listener]
-    (if-let [{job :job} this]
+    (if-let [{^DocPrintJob job :job} this]
       (do (doto job (.addPrintJobListener listener))
           (assoc this :listener listener))
       (throw IllegalStateException "No DocPrintJob keyed at :job."))))
 
-(defn linked-listener [job]
-  )
+(defn job-seq [job-map]
+  (let [{docs :docs ^PrintService printer :printer} job-map]
+    (for [d docs]
+      [(make-doc d) (.. printer createPrintJob)])))
 
-;; (defrecord SimpleMultiDoc [this]
-;;   javax.print.MultiDoc
-;;   (getDoc [this] this)
-;;   (next [this]))
+;; TODO: SEE http://oobaloo.co.uk/clojure-from-callbacks-to-sequences!!!
+;;
+;; (defprotocol IOperator
+;;   "This protocol is to be used by implementations
+;;    that wish to handle a print process by coordinating
+;;    the processing of multiple documents within an ISpoolable."
+;;   (process [this spec]))
+
+;; (defrecord PrintOperator [spec]
+;;   IOperator
+;;   (process [this spec]
+;;     (when-let [docs (seq (:docs spec))]
+;;       (let [{^PrintService printer :printer} spec
+;;             job (.. printer createPrintJob)]
+;;         (submit spec)))))
 
 ;; TODO: Need to be able to ensure that the PrintService does not
 ;; process incoming jobs until it has finished processing the MultiDoc
