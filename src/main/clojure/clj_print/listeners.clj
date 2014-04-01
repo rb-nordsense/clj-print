@@ -35,7 +35,7 @@
       (timbre/info (str "Job complete: " pje)))
     (printJobFailed [this pje]
       (timbre/error (str "Job failed: " pje)))
-    (printJobCanceled [this pje]
+    (printJobCanceled [this pje] 
       (timbre/info (str "Job canceled: " pje)))
     (printJobNoMoreEvents [this pje]
       (timbre/info (str "No more events: " pje))

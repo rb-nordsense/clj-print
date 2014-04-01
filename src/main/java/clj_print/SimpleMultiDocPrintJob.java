@@ -10,6 +10,7 @@ import javax.print.attribute.PrintJobAttributeSet;
 import javax.print.attribute.PrintRequestAttributeSet;
 import javax.print.event.PrintJobAttributeListener;
 import javax.print.event.PrintJobListener;
+import java.io.IOException;
 
 /**
  * Created by racevedo on 3/31/2014.
@@ -25,10 +26,14 @@ public class SimpleMultiDocPrintJob implements MultiDocPrintJob {
 
 	public void print(MultiDoc multiDoc, PrintRequestAttributeSet attributes)
 	        throws PrintException {
-		while (multiDoc.next() != null) {
-			// Print them
-		}
-	}
+        try {
+            while (doc.next() != null) {
+                // Print them
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
 	public PrintService getPrintService() {
 		return service;

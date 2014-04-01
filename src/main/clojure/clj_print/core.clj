@@ -185,7 +185,8 @@
           (assoc this :listener listener))
       (throw IllegalStateException "No DocPrintJob keyed at :job."))))
 
-
+(defn linked-listener [job]
+  )
 
 ;; (defrecord SimpleMultiDoc [this]
 ;;   javax.print.MultiDoc

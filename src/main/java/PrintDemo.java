@@ -1,61 +1,57 @@
+import javax.print.*;
+import javax.print.attribute.*;
+import javax.print.attribute.standard.*;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Locale;
-
-import javax.print.DocFlavor;
-import javax.print.DocPrintJob;
-import javax.print.PrintException;
-import javax.print.PrintService;
-import javax.print.PrintServiceLookup;
-import javax.print.SimpleDoc;
-import javax.print.attribute.AttributeSet;
-import javax.print.attribute.DocAttribute;
-import javax.print.attribute.HashDocAttributeSet;
-import javax.print.attribute.HashPrintServiceAttributeSet;
-import javax.print.attribute.PrintServiceAttribute;
-import javax.print.attribute.standard.Chromaticity;
-import javax.print.attribute.standard.MediaTray;
-import javax.print.attribute.standard.PrinterName;
 
 /**
  * Created by roberto on 3/20/2014.
  */
 public class PrintDemo {
 
-	public static void main(String[] args) {
+    public static void main(String[] args) {
 
-		// Set up our document attributes
-		AttributeSet docAttributeSet =
-		    new HashDocAttributeSet(new DocAttribute[] { MediaTray.MAIN,
-		        Chromaticity.COLOR });
+        // Set up our document attributes
+        DocAttributeSet docAttributeSet =
+                new HashDocAttributeSet() {{
+                    add(Chromaticity.COLOR);
+                }};
 
-		AttributeSet printServiceAttributeSet =
-		    new HashPrintServiceAttributeSet(
-		        new PrintServiceAttribute[] { new PrinterName(
-		            "\\\\SRQPRINT\\2WColor-PRT2_SA", Locale.US) });
+        PrintServiceAttributeSet printServiceAttributeSet =
+                new HashPrintServiceAttributeSet() {{
+                    add(new PrinterName("Officejet_6500_E709n", Locale.US));
 
-		PrintService[] printServices =
-		    PrintServiceLookup.lookupPrintServices(
-		        DocFlavor.INPUT_STREAM.AUTOSENSE, printServiceAttributeSet);
+                }};
 
-		PrintService printService = printServices[0];
+        PrintService[] printServices =
+                PrintServiceLookup.lookupPrintServices(
+                        DocFlavor.INPUT_STREAM.AUTOSENSE, printServiceAttributeSet);
 
-		try {
-			FileInputStream fileInputStream =
-			    new FileInputStream("C:/Users/racevedo/Desktop/test.pdf");
+        PrintService printService = printServices[0];
 
-			SimpleDoc doc =
-			    new SimpleDoc(fileInputStream, DocFlavor.INPUT_STREAM.PDF,
-			        new HashDocAttributeSet());
+        try {
 
-			DocPrintJob printJob = printService.createPrintJob();
+            FileInputStream fileInputStream =
+                    new FileInputStream("/Users/Roberto/Dropbox/docs/PDF/semi-log-graph-paper.pdf");
 
-			printJob.print(doc, null);
+            SimpleDoc doc =
+                    new SimpleDoc(fileInputStream, DocFlavor.INPUT_STREAM.PDF,
+                            docAttributeSet);
 
-		} catch (IOException e) {
+            DocPrintJob printJob = printService.createPrintJob();
 
-		} catch (PrintException e) {
+            PrintRequestAttributeSet printRequestAttributeSet = new HashPrintRequestAttributeSet() {{
+                add(new Copies(5));
+                add(MediaTray.MAIN);
+                add(Chromaticity.COLOR);
+                add(OrientationRequested.LANDSCAPE);
+            }};
 
-		}
-	}
+            printJob.print(doc, printRequestAttributeSet);
+
+        } catch (IOException ignored) {
+        } catch (PrintException ignored) {
+        }
+    }
 }
