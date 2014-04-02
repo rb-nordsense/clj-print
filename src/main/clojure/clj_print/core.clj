@@ -112,24 +112,23 @@
       :request (HashPrintRequestAttributeSet. (into-array PrintRequestAttribute s))
       nil)))
 
-;; TODO: Validate attrs here?
 (defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
    job map. SimpleDoc will throw an IllegalArgumentException if
    the doc-flavor is not representative of the data pointed to
    by doc-source."
   {:since "0.0.1"}
-  [doc-map]
-  (let [{^String source :source} doc-map
+  [doc-spec]
+  (let [{^String source :source} doc-spec
         {:keys [flavor attrs]
          :or {flavor (choose-flavor source)
-              attrs #{MediaTray/MAIN}}} doc-map ;; Pretty sure I need this
+              attrs #{MediaTray/MAIN}}} doc-spec
               resource (condp = (choose-source-key source)
                          :file (FileInputStream. source)
                          :url (URL. source)
                          nil)]
-    ;; TODO: Do I need the caching provided by this?
-    (delay (SimpleDoc. resource flavor (-> attrs (make-set :doc))))))
+    (if (valid-attrs? attrs :doc)
+      (SimpleDoc. resource flavor (-> attrs (make-set :doc))))))
 
 (defn- valid-attrs?
   "Returns true if all of the Attribute objects in
@@ -150,82 +149,64 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;  A JobSpec might look something like this:
-;; 
-;; {:doc {:source "/path/to/doc"
-;;        :flavor (:autosense flavors/input-streams)
-;;        :attrs #{Chromaticity/MONOCHROME
-;;                 PrintQuality/HIGH
-;;                 OrientationRequested/PORTRAIT}}
-;;  :printer (printer "HP_Color_LaserJet_CP3505")
-;;  :attrs #{(Copies. 5) MediaTray/MAIN}
-;;  :listener SimpleJobListener}
+(comment {:doc {:source "/path/to/doc.pdf"
+                :flavor (:autosense flavors/input-streams)
+                :attrs #{Chromaticity/MONOCHROME
+                         PrintQuality/HIGH
+                         OrientationRequested/PORTRAIT}}
+          :printer (printer "HP_Color_LaserJet_CP3505")
+          :attrs #{(Copies. 5) MediaTray/MAIN}
+          :listener (listeners/basic-listener)})
 
-;; (defprotocol ISpoolable
-;;   "This protocol defines a contract that states the
-;;    responsibilities of any implementation that wishes
-;;    to be considered 'spoolable,' which implies that it
-;;    can be queued for later processing such that it is
-;;    another process' resonsibility to handle the ISpoolable
-;;    and block until it has been processed. For an implementation
-;;    to be spoolable, it must be able to do the following:"
-;;   (submit [this]) ;; Submit the job 
-;;   (add-listener [this listener]))
-;; Attach an event listener that
+;; Or
+
+(comment {:docs [{:source "/path/to/doc1.pdf"
+                  :flavor (:autosense flavors/input-streams)
+                  :attrs #{Chromaticity/MONOCHROME}}
+                 {:source "http://somesite.com/doc2.pdf"
+                  :flavor (:autosense flavors/urls)
+                  :attrs #{Chromaticity/COLOR}}]
+          :printer (printer :default)
+          :attrs #{MediaTray/MAIN}
+          :listener (listeners/basic-listener)})
+
+(defprotocol ISpoolable
+  (submit [this]) ;; Submit the job 
+  (add-listener [this listener])) ;; Attach an event listener that
                                   ;; returns a value when the process is complete
-
-;; (defrecord JobSpec [doc printer job attrs]
-;;   ISpoolable
-;;   (submit [this]
-;;     (let [{{obj :obj} :doc} this
-;;           {:keys [^DocPrintJob job attrs]} this]
-;;       (.. job (print @obj (make-set attrs :request)))))
-;;   (add-listener [this listener]
-;;     (if-let [{^DocPrintJob job :job} this]
-;;       (do (doto job (.addPrintJobListener listener))
-;;           (assoc this :listener listener))
-;;       (throw IllegalStateException "No DocPrintJob keyed at :job."))))
-
-(defn submit [jobspec]
-  (let [{{obj :obj} :doc} jobspec
-        {:keys [^DocPrintJob job attrs]}jobspec]
-    (.. job (print @obj (make-set attrs :request)))))
-
-(defn add-listener [jobspec listener]
-    (if-let [{^DocPrintJob job :job} jobspec]
+(defrecord JobSpec [doc printer job attrs]
+  ISpoolable
+  (submit [this]
+    (let [doc-obj (make-doc doc)
+          {:keys [^DocPrintJob job attrs]} this
+          attr-set (make-set attrs :request)]
+      (.. job (print doc-obj attr-set))))
+  (add-listener [this listener]
+    (if-let [{^DocPrintJob job :job} this]
       (do (doto job (.addPrintJobListener listener))
-          (assoc jobspec :listener listener))
-      (throw IllegalStateException "No DocPrintJob keyed at :job.")))
+          (assoc this :listener listener))
+      (throw IllegalStateException "No DocPrintJob keyed at :job."))))
 
-;; (defn job-seq [job-map]
-;;   (let [{docs :docs ^PrintService printer :printer} job-map]
-;;     (for [d docs]
-;;       [(make-doc d) (.. printer createPrintJob)])))
+(defrecord MultiJobSpec [docs printer jobs attrs]
+  ISpoolable
+  (submit [this]
+    (let [{:keys [docs jobs]} this
+          doc-objs (map :obj docs)]
+      (map (fn [d j] (.. j (print @d (make-set attrs :request)))) doc-objs jobs)))
+  ;; (add-listener [this listener]
+  ;;   (if-let [{^DocPrintJob job :job} this]
+  ;;     (do (doto job (.addPrintJobListener listener))
+  ;;         (assoc this :listener listener))
+  ;;     (throw IllegalStateException "No DocPrintJob keyed at :job.")))
+  )
 
 ;; TODO: SEE http://oobaloo.co.uk/clojure-from-callbacks-to-sequences!!!
-;;
-;; (defprotocol IOperator
-;;   "This protocol is to be used by implementations
-;;    that wish to handle a print process by coordinating
-;;    the processing of multiple documents within an ISpoolable."
-;;   (process [this spec]))
 
-;; (defrecord PrintOperator [spec]
-;;   IOperator
-;;   (process [this spec]
-;;     (when-let [docs (seq (:docs spec))]
-;;       (let [{^PrintService printer :printer} spec
-;;             job (.. printer createPrintJob)]
-;;         (submit spec)))))
+(defmulti make-job
+  "Dispatch on which key is present in the spec map."
+  (fn [spec] (apply (some-fn #{:doc} #{:docs}) (keys spec))))
 
-;; TODO: Make this polymorphic using multimethods to prevent having to
-;; create a record type (need to do some performance testing on this,
-;; but for now I think it would be better to develop generically and
-;; then adopt using records as needed
-(defmulti job
-  (fn [spec] (let [{:keys [doc docs]} spec]
-              (or doc docs))))
-
-(defmethod job :doc [spec]
+(defmethod make-job :doc [spec]
   (let [{{doc-attrs :attrs} :doc} spec
         {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
          :or {printer (printer :default)
@@ -233,26 +214,26 @@
               maybe-listen #(if listener (add-listener % listener) %)]
     (if (and (valid-attrs? doc-attrs :doc)
              (valid-attrs? attrs :job))
-      (-> {:doc (assoc doc :obj (make-doc doc))
-           :printer printer
-           :attrs attrs
-           :job (.. printer createPrintJob)}
+      (-> (map->JobSpec {:doc doc
+                         :printer printer
+                         :attrs attrs
+                         :job (.. printer createPrintJob)})
           maybe-listen))))
 
-(defmethod job :docs [spec]
+(defmethod make-job :docs [spec]
   (let [{docs :docs} spec
         {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
          :or {printer (printer :default)
               attrs #{MediaTray/MAIN}}} spec
               maybe-listen #(if listener (add-listener % listener) %)]
-    (println "In :docs")
     (if (and (every? #(valid-attrs? (:attrs %) :doc) docs)
              (valid-attrs? attrs :job))
-      (-> {:docs (map #(assoc % :obj (make-doc %)) docs)
-           :printer printer
-           :attrs attrs
-           :job (.. printer createPrintJob)}
-          maybe-listen))))
+      (map->MultiJobSpec {:docs (map #(assoc % :obj (make-doc %)) docs)
+                          :printer printer
+                          :attrs attrs
+                          :jobs (map maybe-listen
+                                     (for [d docs]
+                                       (.. printer createPrintJob)))}))))
 
 ;; (defn make-job
 ;;   "Returns a JobSpec map that is the result of
