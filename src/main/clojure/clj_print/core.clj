@@ -112,6 +112,7 @@
       :request (HashPrintRequestAttributeSet. (into-array PrintRequestAttribute s))
       nil)))
 
+;; TODO: Validate attrs here?
 (defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
    job map. SimpleDoc will throw an IllegalArgumentException if
@@ -159,39 +160,46 @@
 ;;  :attrs #{(Copies. 5) MediaTray/MAIN}
 ;;  :listener SimpleJobListener}
 
-(defprotocol ISpoolable
-  "This protocol defines a contract that states the
-   responsibilities of any implementation that wishes
-   to be considered 'spoolable,' which implies that it
-   can be queued for later processing such that it is
-   another process' resonsibility to handle the ISpoolable
-   and block until it has been processed. For an implementation
-   to be spoolable, it must be able to do the following:"
-  (submit [this]) ;; Submit the job 
-  (add-listener [this listener])) ;; Attach an event listener that
+;; (defprotocol ISpoolable
+;;   "This protocol defines a contract that states the
+;;    responsibilities of any implementation that wishes
+;;    to be considered 'spoolable,' which implies that it
+;;    can be queued for later processing such that it is
+;;    another process' resonsibility to handle the ISpoolable
+;;    and block until it has been processed. For an implementation
+;;    to be spoolable, it must be able to do the following:"
+;;   (submit [this]) ;; Submit the job 
+;;   (add-listener [this listener]))
+;; Attach an event listener that
                                   ;; returns a value when the process is complete
 
-(defrecord JobSpec [doc printer job attrs]
-  ISpoolable
-  (submit [this]
-    (cond
-     (:doc this) (let [{{obj :obj} :doc} this
-                       {:keys [^DocPrintJob job attrs]} this]
-                   (.. job (print @obj (make-set attrs :request))))
-     (:docs this) (let [{docs :docs ^PrintService printer :printer} this]
-                    (for [d docs]
-                      [(make-doc d) (.. printer createPrintJob)]))
-     :else nil))
-  (add-listener [this listener]
-    (if-let [{^DocPrintJob job :job} this]
-      (do (doto job (.addPrintJobListener listener))
-          (assoc this :listener listener))
-      (throw IllegalStateException "No DocPrintJob keyed at :job."))))
+;; (defrecord JobSpec [doc printer job attrs]
+;;   ISpoolable
+;;   (submit [this]
+;;     (let [{{obj :obj} :doc} this
+;;           {:keys [^DocPrintJob job attrs]} this]
+;;       (.. job (print @obj (make-set attrs :request)))))
+;;   (add-listener [this listener]
+;;     (if-let [{^DocPrintJob job :job} this]
+;;       (do (doto job (.addPrintJobListener listener))
+;;           (assoc this :listener listener))
+;;       (throw IllegalStateException "No DocPrintJob keyed at :job."))))
 
-(defn job-seq [job-map]
-  (let [{docs :docs ^PrintService printer :printer} job-map]
-    (for [d docs]
-      [(make-doc d) (.. printer createPrintJob)])))
+(defn submit [jobspec]
+  (let [{{obj :obj} :doc} jobspec
+        {:keys [^DocPrintJob job attrs]}jobspec]
+    (.. job (print @obj (make-set attrs :request)))))
+
+(defn add-listener [jobspec listener]
+    (if-let [{^DocPrintJob job :job} jobspec]
+      (do (doto job (.addPrintJobListener listener))
+          (assoc jobspec :listener listener))
+      (throw IllegalStateException "No DocPrintJob keyed at :job.")))
+
+;; (defn job-seq [job-map]
+;;   (let [{docs :docs ^PrintService printer :printer} job-map]
+;;     (for [d docs]
+;;       [(make-doc d) (.. printer createPrintJob)])))
 
 ;; TODO: SEE http://oobaloo.co.uk/clojure-from-callbacks-to-sequences!!!
 ;;
@@ -209,42 +217,88 @@
 ;;             job (.. printer createPrintJob)]
 ;;         (submit spec)))))
 
-;; TODO: Need to be able to ensure that the PrintService does not
-;; process incoming jobs until it has finished processing the MultiDoc
-;; (all calls to print on DocPrintJob objects dispensed by it should
-;; block until the the current job signals completion/no more events).
+;; TODO: Make this polymorphic using multimethods to prevent having to
+;; create a record type (need to do some performance testing on this,
+;; but for now I think it would be better to develop generically and
+;; then adopt using records as needed
+(defmulti job
+  (fn [spec] (let [{:keys [doc docs]} spec]
+              (or doc docs))))
 
-(defn make-job
-  "Returns a JobSpec map that is the result of
-   assoc'ing required values to it. The values are:
+(defmethod job :doc [spec]
+  (let [{{doc-attrs :attrs} :doc} spec
+        {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
+         :or {printer (printer :default)
+              attrs #{MediaTray/MAIN}}} spec
+              maybe-listen #(if listener (add-listener % listener) %)]
+    (if (and (valid-attrs? doc-attrs :doc)
+             (valid-attrs? attrs :job))
+      (-> {:doc (assoc doc :obj (make-doc doc))
+           :printer printer
+           :attrs attrs
+           :job (.. printer createPrintJob)}
+          maybe-listen))))
 
-   1. A SimpleDoc object (wrapped in a Delay) made from
-   the map keyed at :doc.
-   2. A DocPrintJob object that is retrieved from the
-   PrintService.
+(defmethod job :docs [spec]
+  (let [{docs :docs} spec
+        {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
+         :or {printer (printer :default)
+              attrs #{MediaTray/MAIN}}} spec
+              maybe-listen #(if listener (add-listener % listener) %)]
+    (println "In :docs")
+    (if (and (every? #(valid-attrs? (:attrs %) :doc) docs)
+             (valid-attrs? attrs :job))
+      (-> {:docs (map #(assoc % :obj (make-doc %)) docs)
+           :printer printer
+           :attrs attrs
+           :job (.. printer createPrintJob)}
+          maybe-listen))))
 
-   The following defaults are also assoc'd to the job-spec
-   if no values are supplied for them:
+;; (defn make-job
+;;   "Returns a JobSpec map that is the result of
+;;    assoc'ing required values to it. The values are:
 
-   1. The default system printer.
-   2. An attribute set with the single attribute MediaTray/MAIN.
-   3. A basic PrintJobListener that prints any events that occur
-   on the DocPrintJob."
-  {:since "0.0.1"}
-  [spec]
-  (if (:doc spec)
-    (let [{{doc-attrs :attrs} :doc} spec
-          {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
-           :or {printer (printer :default)
-                attrs #{MediaTray/MAIN}}} spec
-          maybe-listen #(if listener (add-listener % listener) %)]
-      (if (and (valid-attrs? doc-attrs :doc)
-               (valid-attrs? attrs :job))
-        (-> (map->JobSpec {:doc (assoc doc :obj (make-doc doc))
-                           :printer printer
-                           :attrs attrs
-                           :job (.. printer createPrintJob)})
-            maybe-listen)))))
+;;    1. A SimpleDoc object (wrapped in a Delay) made from
+;;    the map keyed at :doc.
+;;    2. A DocPrintJob object that is retrieved from the
+;;    PrintService.
+
+;;    The following defaults are also assoc'd to the job-spec
+;;    if no values are supplied for them:
+
+;;    1. The default system printer.
+;;    2. An attribute set with the single attribute MediaTray/MAIN.
+;;    3. A basic PrintJobListener that prints any events that occur
+;;    on the DocPrintJob."
+;;   {:since "0.0.1"}
+;;   [spec]
+;;   (cond
+;;    (:doc spec) (let [{{doc-attrs :attrs} :doc} spec
+;;                      {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
+;;                       :or {printer (printer :default)
+;;                            attrs #{MediaTray/MAIN}}} spec
+;;                            maybe-listen #(if listener (add-listener % listener) %)]
+;;                  (if (and (valid-attrs? doc-attrs :doc)
+;;                           (valid-attrs? attrs :job))
+;;                    (-> {:doc (assoc doc :obj (make-doc doc))
+;;                         :printer printer
+;;                         :attrs attrs
+;;                         :job (.. printer createPrintJob)}
+;;                        maybe-listen)))
+;;    (:docs spec) (let [{docs :docs} spec
+;;                      {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
+;;                       :or {printer (printer :default)
+;;                            attrs #{MediaTray/MAIN}}} spec
+;;                            maybe-listen #(if listener (add-listener % listener) %)]
+;;                   (println "In :docs")
+;;                   (if (and (every? #(valid-attrs? (:attrs %) :doc) docs)
+;;                            (valid-attrs? attrs :job))
+;;                    (-> {:docs (map #(assoc % :obj (make-doc %)) docs)
+;;                         :printer printer
+;;                         :attrs attrs
+;;                         :job (.. printer createPrintJob)}
+;;                        maybe-listen)))
+;;    :else nil))
 
 (defn -main [& args]
   (if (seq args)
