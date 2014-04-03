@@ -2,7 +2,7 @@
       :author "Roberto Acevedo"}
   clj-print.core
   (:require [clj-print [doc-flavors :as flavors]
-                       [listeners :as listeners]]
+             [listeners :as listeners]]
             [clojure.java [io :as io]]
             [clojure.pprint :refer [pprint]]
             [taoensso.timbre :as timbre])
@@ -172,55 +172,53 @@
           :attrs #{MediaTray/MAIN}
           :listener (listeners/basic-listener)})
 
-(defprotocol ISpoolable
-  (submit [this]) ;; Submit the job 
-  (add-listener [this listener])) ;; Attach an event listener that
-                                  ;; returns a value when the process is complete
+(defprotocol IJobSpec
+  (submit [this]) 
+  (add-listener [this listener-fn]))
+
+;; TODO: Handle exception scenarios
 (defrecord JobSpec [doc printer job attrs]
-  ISpoolable
+  IJobSpec
   (submit [this]
+    (if-let [{listener-fn :listener-fn} this]
+      (add-listener this listener-fn))
     (let [doc-obj (make-doc doc)
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
       (.. job (print doc-obj attr-set))))
-  (add-listener [this listener]
-    (if-let [{^DocPrintJob job :job} this]
-      (do (doto job (.addPrintJobListener listener))
-          (assoc this :listener listener))
-      (throw IllegalStateException "No DocPrintJob keyed at :job."))))
+  (add-listener [this listener-fn]
+    (let [{:keys [^DocPrintJob job listener-fn]} this
+          listener (listener-fn)]
+      (doto job (.addPrintJobListener listener)))))
 
 (defrecord MultiJobSpec [docs printer jobs attrs]
-  ISpoolable
+  IJobSpec
   (submit [this]
+    (if-let [{listener-fn :listener-fn} this]
+      (add-listener this listener-fn))
     (let [{:keys [docs jobs]} this
           doc-objs (map :obj docs)]
-      (map (fn [d j] (.. j (print @d (make-set attrs :request)))) doc-objs jobs))) ;; TODO: reflection
-  ;; (add-listener [this listener]
-  ;;   (if-let [{^DocPrintJob job :job} this]
-  ;;     (do (doto job (.addPrintJobListener listener))
-  ;;         (assoc this :listener listener))
-  ;;     (throw IllegalStateException "No DocPrintJob keyed at :job.")))
-  )
+      (doall (map (fn [j d] (.. j (print @d (make-set attrs :request)))) jobs doc-objs)))) ;; TODO: reflection
+  (add-listener [this listener-fn]
+    (let [{:keys [^DocPrintJob jobs listener-fn]} this]
+      (doseq [j jobs]
+        (.. j (addPrintJobListener (listener-fn)))))))
 
 ;; TODO: SEE http://oobaloo.co.uk/clojure-from-callbacks-to-sequences!!!
-
 (defmulti make-job
   "Dispatch on which key is present in the spec map."
   (fn [spec] (apply (some-fn #{:doc} #{:docs}) (keys spec))))
 
 (defmethod make-job :doc [spec]
-  (let [{{doc-attrs :attrs} :doc} spec
-        {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
-         :or {printer (printer :default)
-              attrs #{MediaTray/MAIN}}} spec
-              maybe-listen #(if listener (add-listener % listener) %)]
-    (if  (and (valid-attrs? doc-attrs :doc)
+  (let [{:keys [^PrintService printer ^PrintJobListener listener doc attrs]} spec
+        {doc-attrs :attrs} doc]
+    (if (and (valid-attrs? doc-attrs :doc)
              (valid-attrs? attrs :job))
-      (-> (map->JobSpec {:doc doc
-                         :printer printer
-                         :attrs attrs
-                         :job (.. printer createPrintJob)})
-          maybe-listen))))
+      (letfn [(add-doc [doc-map]
+                (assoc-in doc-map [:doc :obj] (delay (make-doc doc-map))))
+              (add-job [spec]
+                (assoc-in spec [:job] (.. printer createPrintJob)))]
+        (-> spec add-doc add-job map->JobSpec)))))
 
 (defmethod make-job :docs [spec]
   (let [{:keys [^PrintService printer
@@ -230,11 +228,11 @@
              (valid-attrs? attrs :job))
       (letfn [(add-doc [doc-map]
                 (assoc-in doc-map [:obj] (delay (make-doc doc-map))))
-              (add-docs [m]
-                (update-in m [:docs] (fn [doc-list] (map add-doc  doc-list))))
-              (add-jobs [m]
-                (assoc-in m [:jobs] (for [d docs] (.. printer createPrintJob))))]
-        (-> spec add-docs add-jobs)))))
+              (add-docs [spec]
+                (update-in spec [:docs] (fn [doc-list] (map add-doc  doc-list))))
+              (add-jobs [spec]
+                (assoc-in spec [:jobs] (for [doc docs] (.. printer createPrintJob))))]
+        (-> spec add-docs add-jobs map->MultiJobSpec)))))
 
 ;; (defn make-job
 ;;   "Returns a JobSpec map that is the result of
