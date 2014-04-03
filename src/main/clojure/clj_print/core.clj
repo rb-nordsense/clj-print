@@ -112,6 +112,24 @@
       :request (HashPrintRequestAttributeSet. (into-array PrintRequestAttribute s))
       nil)))
 
+(defn- valid-attrs?
+  "Returns true if all of the Attribute objects in
+   attrs are bounded by the type specified by k.
+   Valid keywords for k are:
+     :doc
+     :job
+     :request,
+     :service"
+  {:since "0.0.1"}
+  [attrs k]
+  (if (seq attrs)
+    (let [mappings {:doc DocAttribute
+                    :job PrintJobAttribute
+                    :request PrintRequestAttribute
+                    :service PrintServiceAttribute}]
+      (every? (fn [attr] (instance? (k mappings) attr)) attrs))))
+
+
 (defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
    job map. SimpleDoc will throw an IllegalArgumentException if
@@ -129,22 +147,6 @@
                          nil)]
     (if (valid-attrs? attrs :doc)
       (SimpleDoc. resource flavor (-> attrs (make-set :doc))))))
-
-(defn- valid-attrs?
-  "Returns true if all of the Attribute objects in
-   attrs are bounded by the type specified by k.
-   Valid keywords for k are:
-     :doc
-     :job
-     :request,
-     :service"
-  {:since "0.0.1"}
-  [attrs k]
-  (condp = k
-    :doc (every? #(instance? DocAttribute %) attrs)
-    :job (every? #(instance? PrintJobAttribute %) attrs)
-    :request (every? #(instance? PrintRequestAttribute %) attrs)
-    :service (every? #(instance? PrintServiceAttribute %) attrs)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -192,7 +194,7 @@
   (submit [this]
     (let [{:keys [docs jobs]} this
           doc-objs (map :obj docs)]
-      (map (fn [d j] (.. j (print @d (make-set attrs :request)))) doc-objs jobs)))
+      (map (fn [d j] (.. j (print @d (make-set attrs :request)))) doc-objs jobs))) ;; TODO: reflection
   ;; (add-listener [this listener]
   ;;   (if-let [{^DocPrintJob job :job} this]
   ;;     (do (doto job (.addPrintJobListener listener))
@@ -212,7 +214,7 @@
          :or {printer (printer :default)
               attrs #{MediaTray/MAIN}}} spec
               maybe-listen #(if listener (add-listener % listener) %)]
-    (if (and (valid-attrs? doc-attrs :doc)
+    (if  (and (valid-attrs? doc-attrs :doc)
              (valid-attrs? attrs :job))
       (-> (map->JobSpec {:doc doc
                          :printer printer
@@ -221,19 +223,18 @@
           maybe-listen))))
 
 (defmethod make-job :docs [spec]
-  (let [{docs :docs} spec
-        {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
-         :or {printer (printer :default)
-              attrs #{MediaTray/MAIN}}} spec
-              maybe-listen #(if listener (add-listener % listener) %)]
-    (if (and (every? #(valid-attrs? (:attrs %) :doc) docs)
+  (let [{:keys [^PrintService printer
+                ^PrintJobListener listener
+                docs attrs]} spec]
+    (if (and (every? (fn [d] (valid-attrs? d :doc)) (map :attrs docs))
              (valid-attrs? attrs :job))
-      (map->MultiJobSpec {:docs (map #(assoc % :obj (make-doc %)) docs)
-                          :printer printer
-                          :attrs attrs
-                          :jobs (map maybe-listen
-                                     (for [d docs]
-                                       (.. printer createPrintJob)))}))))
+      (letfn [(add-doc [doc-map]
+                (assoc-in doc-map [:obj] (delay (make-doc doc-map))))
+              (add-docs [m]
+                (update-in m [:docs] (fn [doc-list] (map add-doc  doc-list))))
+              (add-jobs [m]
+                (assoc-in m [:jobs] (for [d docs] (.. printer createPrintJob))))]
+        (-> spec add-docs add-jobs)))))
 
 ;; (defn make-job
 ;;   "Returns a JobSpec map that is the result of
