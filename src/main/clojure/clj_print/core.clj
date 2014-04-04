@@ -80,10 +80,21 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Util ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn lazy-map
+  "A lazier version of map so that calling (take 1 (map submit! multidoc))
+  on a lazy-seq made by multimethod make-job :docs doesn't cause
+  print events to be realized sooner than they should be due to
+  chunking."
+  {:since "0.0.1"}
+  [f coll]
+  (if (seq coll)
+    (lazy-seq (cons (f (first coll)) (lazy-map f (rest coll))))
+    nil))
+
 (defn- choose-source-key
   "Returns a keyword representative of the document source's
    type."
-  {:since "1.0"}
+  {:since "0.0.1"}
   [source]
   (cond (try (.. (io/file source) exists) (catch Throwable t)) :file
         (try (URL. source) (catch Throwable t)) :url
@@ -92,7 +103,7 @@
 (defn- choose-flavor
   "Attempts to guess the appropriate DocFlavor for the document.
    Returns nil if no suitable DocFlavor is found."
-  {:since "1.0"}
+  {:since "0.0.1"}
   [source]
   (condp = (choose-source-key source)
     :file (:autosense flavors/input-streams)
@@ -234,7 +245,7 @@
       (-> spec (dissoc :docs) (assoc :doc doc) make-job))))
 
 ;; Old method of encapsulating a 'MultiJobSpec', most
-;; values in a JobSpec will be Singleton/Enum instances
+;; values in a JobSpec will be singleton instances
 ;; anyways, so structural sharing may not be necessary,
 ;; though I'll throw this in here anyways:
 ;;
