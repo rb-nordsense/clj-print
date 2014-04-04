@@ -182,7 +182,7 @@
   (submit [this]
     (if-let [{listener-fn :listener-fn} this]
       (add-listener this listener-fn))
-    (let [doc-obj (make-doc doc)
+    (let [{{doc-obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
       (.. job (print doc-obj attr-set))))
@@ -198,10 +198,12 @@
       (add-listener this listener-fn))
     (let [{:keys [docs jobs]} this
           doc-objs (map :obj docs)]
-      (doall (map (fn [j d] (.. j (print @d (make-set attrs :request)))) jobs doc-objs)))) ;; TODO: reflection
+      (doall
+       (map (fn [^DocPrintJob j d]
+              (.. j (print @d (make-set attrs :request)))) jobs doc-objs))))
   (add-listener [this listener-fn]
-    (let [{:keys [^DocPrintJob jobs listener-fn]} this]
-      (doseq [j jobs]
+    (let [{:keys [jobs listener-fn]} this]
+      (doseq [^DocPrintJob j jobs]
         (.. j (addPrintJobListener (listener-fn)))))))
 
 ;; TODO: SEE http://oobaloo.co.uk/clojure-from-callbacks-to-sequences!!!
