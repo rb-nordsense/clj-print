@@ -106,10 +106,18 @@
   [^clojure.lang.IPersistentSet s bound]
   (if (seq s)
     (condp = bound        
-      :service (HashPrintServiceAttributeSet. (into-array PrintServiceAttribute s))
-      :job (HashPrintJobAttributeSet. (into-array PrintJobAttribute s))
-      :doc (HashDocAttributeSet. (into-array DocAttribute s))
-      :request (HashPrintRequestAttributeSet. (into-array PrintRequestAttribute s))
+      :service (HashPrintServiceAttributeSet.
+                #^"[Ljavax.print.attribute.PrintServiceAttribute;"
+                (into-array PrintServiceAttribute s))
+      :job (HashPrintJobAttributeSet.
+            #^"[Ljavax.print.attribute.PrintJobAttribute;"
+            (into-array PrintJobAttribute s))
+      :doc (HashDocAttributeSet.
+            #^"[Ljavax.print.attribute.DocAttribute;"
+            (into-array DocAttribute s))
+      :request (HashPrintRequestAttributeSet.
+                #^"[Ljavax.print.attribute.PrintRequestAttribute;"
+                (into-array PrintRequestAttribute s))
       nil)))
 
 (defn- valid-attrs?
@@ -150,65 +158,64 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Job ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;  A JobSpec might look something like this:
-(comment {:doc {:source "/path/to/doc.pdf"
-                :flavor (:autosense flavors/input-streams)
-                :attrs #{Chromaticity/MONOCHROME
-                         PrintQuality/HIGH
-                         OrientationRequested/PORTRAIT}}
-          :printer (printer "HP_Color_LaserJet_CP3505")
-          :attrs #{(Copies. 5) MediaTray/MAIN}
-          :listener (listeners/basic-listener)})
-
-;; Or
-
-(comment {:docs [{:source "/path/to/doc1.pdf"
-                  :flavor (:autosense flavors/input-streams)
-                  :attrs #{Chromaticity/MONOCHROME}}
-                 {:source "http://somesite.com/doc2.pdf"
-                  :flavor (:autosense flavors/urls)
-                  :attrs #{Chromaticity/COLOR}}]
-          :printer (printer :default)
-          :attrs #{MediaTray/MAIN}
-          :listener (listeners/basic-listener)})
-
 (defprotocol IJobSpec
-  (submit [this]) 
-  (add-listener [this listener-fn]))
+  "Protocol for print job data structures"
+  (submit! [this]) 
+  (add-listener! [this listener-fn]))
 
-;; TODO: Handle exception scenarios
 (defrecord JobSpec [doc printer job attrs]
   IJobSpec
-  (submit [this]
+  (submit! [this]
     (if-let [{listener-fn :listener-fn} this]
-      (add-listener this listener-fn))
+      ;; Listeners are not added until right before submission
+      (add-listener! this listener-fn)) 
     (let [{{doc-obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
       (.. job (print doc-obj attr-set))))
-  (add-listener [this listener-fn]
+  (add-listener! [this listener-fn]
     (let [{:keys [^DocPrintJob job listener-fn]} this
           listener (listener-fn)]
       (doto job (.addPrintJobListener listener)))))
 
-(defrecord MultiJobSpec [docs printer jobs attrs]
-  IJobSpec
-  (submit [this]
-    (if-let [{listener-fn :listener-fn} this]
-      (add-listener this listener-fn))
-    (let [{:keys [docs jobs]} this
-          doc-objs (map :obj docs)]
-      (doall
-       (map (fn [^DocPrintJob j d]
-              (.. j (print @d (make-set attrs :request)))) jobs doc-objs))))
-  (add-listener [this listener-fn]
-    (let [{:keys [jobs listener-fn]} this]
-      (doseq [^DocPrintJob j jobs]
-        (.. j (addPrintJobListener (listener-fn)))))))
+;;  A JobSpec might look something like this:
+;; {:doc {:source "/path/to/doc.pdf"
+;;        :flavor (:autosense flavors/input-streams)
+;;        :attrs #{Chromaticity/MONOCHROME
+;;                 PrintQuality/HIGH
+;;                 OrientationRequested/PORTRAIT}}
+;;  :printer (printer "HP_Color_LaserJet_CP3505")
+;;  :attrs #{(Copies. 5) MediaTray/MAIN}
+;;  :listener (listeners/basic-listener)}
 
-;; TODO: SEE http://oobaloo.co.uk/clojure-from-callbacks-to-sequences!!!
+;; Or
+;; {:docs [{:source "/path/to/doc1.pdf"
+;;          :flavor (:autosense flavors/input-streams)
+;;          :attrs #{Chromaticity/MONOCHROME}}
+;;         {:source "http://somesite.com/doc2.pdf"
+;;          :flavor (:autosense flavors/urls)
+;;          :attrs #{Chromaticity/COLOR}}]
+;;  :printer (printer :default)
+;;  :attrs #{MediaTray/MAIN}
+;;  :listener (listeners/basic-listener)}
+
 (defmulti make-job
-  "Dispatch on which key is present in the spec map."
+  "Returns a JobSpec map that is the result of
+   assoc'ing required values to it. The values are:
+
+   1. A SimpleDoc object (wrapped in a Delay) made from
+   the map keyed at :doc.
+   2. A DocPrintJob object that is retrieved from the
+   PrintService.
+
+   The following defaults are also assoc'd to the job-spec
+   if no values are supplied for them:
+
+   1. The default system printer.
+   2. An attribute set with the single attribute MediaTray/MAIN.
+   3. A basic PrintJobListener that prints any events that occur
+   on the DocPrintJob."
+  {:since "0.0.1"}
   (fn [spec] (apply (some-fn #{:doc} #{:docs}) (keys spec))))
 
 (defmethod make-job :doc [spec]
@@ -223,67 +230,39 @@
         (-> spec add-doc add-job map->JobSpec)))))
 
 (defmethod make-job :docs [spec]
-  (let [{:keys [^PrintService printer
-                ^PrintJobListener listener
-                docs attrs]} spec]
-    (if (and (every? (fn [d] (valid-attrs? d :doc)) (map :attrs docs))
-             (valid-attrs? attrs :job))
-      (letfn [(add-doc [doc-map]
-                (assoc-in doc-map [:obj] (delay (make-doc doc-map))))
-              (add-docs [spec]
-                (update-in spec [:docs] (fn [doc-list] (map add-doc  doc-list))))
-              (add-jobs [spec]
-                (assoc-in spec [:jobs] (for [doc docs] (.. printer createPrintJob))))]
-        (-> spec add-docs add-jobs map->MultiJobSpec)))))
+  (let [{docs :docs} spec]
+    (for [doc docs]
+      (-> spec (dissoc :docs) (assoc :doc doc) make-job))))
 
-;; (defn make-job
-;;   "Returns a JobSpec map that is the result of
-;;    assoc'ing required values to it. The values are:
+;; Old method of encapsulating a 'MultiJobSpec', most
+;; values in a JobSpec will be Singleton/Enum instances
+;; anyways, so structural sharing may not be necessary,
+;; though I'll throw this in here anyways:
+;;
+;; TODO: Analyze memory consumption in JVisualVM for:
+;; 1. maps vs records being used for job specs in general
+;; 2. Using MultiJobSpec vs just using 
+;;
+;; (defmethod make-job :docs [spec]
+;;   (let [{:keys [^PrintService printer
+;;                 ^PrintJobListener listener
+;;                 docs attrs]} spec]
+;;     (if (and (every? (fn [d] (valid-attrs? d :doc)) (map :attrs docs))
+;;              (valid-attrs? attrs :job))
+;;       (letfn [(add-doc [doc-map]
+;;                 (assoc-in doc-map [:obj] (delay (make-doc doc-map))))
+;;               (add-docs [spec]
+;;                 (update-in spec [:docs] (fn [doc-list] (map add-doc  doc-list))))
+;;               (add-jobs [spec]
+;;                 (assoc-in spec [:jobs] (for [doc docs] (.. printer createPrintJob))))]
+;;         (-> spec add-docs add-jobs map->MultiJobSpec)))))
 
-;;    1. A SimpleDoc object (wrapped in a Delay) made from
-;;    the map keyed at :doc.
-;;    2. A DocPrintJob object that is retrieved from the
-;;    PrintService.
-
-;;    The following defaults are also assoc'd to the job-spec
-;;    if no values are supplied for them:
-
-;;    1. The default system printer.
-;;    2. An attribute set with the single attribute MediaTray/MAIN.
-;;    3. A basic PrintJobListener that prints any events that occur
-;;    on the DocPrintJob."
-;;   {:since "0.0.1"}
-;;   [spec]
-;;   (cond
-;;    (:doc spec) (let [{{doc-attrs :attrs} :doc} spec
-;;                      {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
-;;                       :or {printer (printer :default)
-;;                            attrs #{MediaTray/MAIN}}} spec
-;;                            maybe-listen #(if listener (add-listener % listener) %)]
-;;                  (if (and (valid-attrs? doc-attrs :doc)
-;;                           (valid-attrs? attrs :job))
-;;                    (-> {:doc (assoc doc :obj (make-doc doc))
-;;                         :printer printer
-;;                         :attrs attrs
-;;                         :job (.. printer createPrintJob)}
-;;                        maybe-listen)))
-;;    (:docs spec) (let [{docs :docs} spec
-;;                      {:keys [doc ^PrintService printer attrs ^PrintJobtListener listener]
-;;                       :or {printer (printer :default)
-;;                            attrs #{MediaTray/MAIN}}} spec
-;;                            maybe-listen #(if listener (add-listener % listener) %)]
-;;                   (println "In :docs")
-;;                   (if (and (every? #(valid-attrs? (:attrs %) :doc) docs)
-;;                            (valid-attrs? attrs :job))
-;;                    (-> {:docs (map #(assoc % :obj (make-doc %)) docs)
-;;                         :printer printer
-;;                         :attrs attrs
-;;                         :job (.. printer createPrintJob)}
-;;                        maybe-listen)))
-;;    :else nil))
-
-(defn -main [& args]
+(defn -main
+  "Main method, expects each value in args to be the string
+   representation of a clojure map to be read by the reader."
+  {:since "0.0.1"}
+  [& args]
   (if (seq args)
     (doseq [v args]
       (let [spec (read-string v)]
-        (-> (make-job spec) submit)))))
+        (-> (make-job spec) submit!)))))
