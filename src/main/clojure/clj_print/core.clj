@@ -4,8 +4,7 @@
   (:require [clj-print [doc-flavors :as flavors]
              [listeners :as listeners]]
             [clojure.java [io :as io]]
-            [clojure.pprint :refer [pprint]]
-            [taoensso.timbre :as timbre])
+            [clojure.pprint :refer [pprint]])
   (:import (java.io File FileInputStream FileNotFoundException)
            (java.net URL)
            (javax.print DocPrintJob
@@ -172,7 +171,7 @@
     (let [{{doc-obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
-      (.. job (print doc-obj attr-set))))
+      (.. job (print @doc-obj attr-set))))
   (add-listener! [this listener-fn]
     (let [{:keys [^DocPrintJob job listener-fn]} this
           listener (listener-fn)]
@@ -223,8 +222,8 @@
         {doc-attrs :attrs} doc]
     (if (and (valid-attrs? doc-attrs :doc)
              (valid-attrs? attrs :job))
-      (letfn [(add-doc [doc-map]
-                (assoc-in doc-map [:doc :obj] (delay (make-doc doc-map))))
+      (letfn [(add-doc [spec]
+                (assoc-in spec [:doc :obj] (delay (make-doc doc))))
               (add-job [spec]
                 (assoc-in spec [:job] (.. printer createPrintJob)))]
         (-> spec add-doc add-job map->JobSpec)))))
