@@ -150,7 +150,7 @@ A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/d
 
 ```
 
-[Job pipe inspiration](http://oobaloo.co.uk/clojure-from-callbacks-to-sequences)
+[Job pipe inspiration](http://oobaloo.co.uk/clojure-from-callbacks-to-sequences)    
 [Lazy-map idea](http://isti.bitbucket.org/2012/04/01/pipes-clojure-choco-1.html)
 
 ## License
