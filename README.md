@@ -1,14 +1,12 @@
 clj-print
 =======
 
-A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API, because sometimes we
-need dead tree repesentations of our data.
+A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API.
 
 ## TODO
-- Consider whether job-map contains sufficient data
+- Make jobs identifiable/comparable so that they can be searched for
 - Cut down on type hinting where possible
-- Establish workers for the queue
-- Create mappings for the myriad of DocFlavors/Attributes
+
 
 ## Usage
 
@@ -31,19 +29,19 @@ need dead tree repesentations of our data.
 ;; #<Win32PrintService Win32 Printer : \\SRQPRINT\2WColor-PRT2_SA>
 
 ;; You can also get the system default printer by calling
-;; `printer` with no arguments:
-(printer)
+;; `printer` with the :default key
+(printer :default)
 ;; #<Win32PrintService Win32 Printer : \\srqprint\2WSouth-Prt3>
 
 ;; You can get a status seq for any registered printer:
-(status (printer)) 
+(status (printer :default)) 
 ;; (#<PrinterIsAcceptingJobs accepting-jobs>
 ;;  #<ColorSupported supported>
 ;;  #<QueuedJobCount 0>
 ;;  #<PrinterName \\srqprint\2WSouth-Prt3>)
 
 ;; As well as the various attributes that the printer supports:
-(attributes (printer))
+(attributes (printer :default))
 ;; (#<JobName Java Printing>
 ;;  #<RequestingUserName racevedo>
 ;;  #<CopiesSupported 1-9999>
@@ -68,7 +66,7 @@ need dead tree repesentations of our data.
 
 ;; Or be more specific (more coming soon), you can of
 ;; course just do this with `filter`:
-(trays (printer)) 
+(trays (printer :default)) 
 ;; (#<Win32MediaTray Form-Source>
 ;;  #<MediaTray manual>
 ;;  #<Win32MediaTray Tray 4>
@@ -97,24 +95,43 @@ need dead tree repesentations of our data.
 ;;  #<Win32MediaTray Recycled>
 ;;  #<Win32MediaTray Letterhead>)
 
-;; Actually printing things is easy. `job-map` Expects a path
-;; or URL to a file:
-(let [job (job-map "/path/to/file" "ACME Co Printer 9000")]
-  (-> job submit))
+;; Actually printing things is easy. `make-job` is a multi-method
+;; that expects a nested map formatted as shown below (some parameters
+;; are optional, see docs):
 
-;; When no printer is specified, the system default is used.
-;; I am ironing out the kinks so that one does not have to 
-;; explicitly specify the document source (i.e. input stream
-;; vs URL vs byte array) when using anything other than a file
-;; path
-(let [job (job-map "http://coolwebsite.com/my_neat_document.pdf"
-                    :doc-source (:autosense flavors/urls))]
-  (-> job submit))
+(-> (make-job {:doc {:source "/Users/Roberto/Desktop/test.pdf"
+                     :flavor (:autosense flavors/input-streams)
+                     :attrs #{Chromaticity/MONOCHROME
+                              PrintQuality/HIGH
+                              OrientationRequested/PORTRAIT}}
+               :printer (printer :default)
+               :attrs #{MediaTray/MAIN}
+               :listener-fn listeners/basic-listener})
+    (submit!))
+
+;; Or as a multi-job:
+
+(let [jobs (make-job {:docs [{:source "/Users/Roberto/Desktop/test.pdf"
+                              :flavor (:autosense flavors/input-streams)
+                              :attrs #{Chromaticity/MONOCHROME
+                                       PrintQuality/HIGH
+                                       OrientationRequested/PORTRAIT}}
+                             {:source "/Users/Roberto/Desktop/parabolla.pdf"
+                              :flavor (:autosense flavors/input-streams)
+                              :attrs #{Chromaticity/MONOCHROME
+                                       PrintQuality/HIGH
+                                       OrientationRequested/PORTRAIT}}]
+                      :printer (printer :default)
+                      :attrs #{MediaTray/MAIN}
+                      :listener-fn listeners/basic-listener})
+      job-pipe (lazy-map submit! jobs)]
+  (take 2 job-pipe)) 
+
+;; Because lazy-map is truly lazy (not chunked like map), submit! is
+;; not computed until a job is taken from the pipe. This allows for
+;; print jobs to be 'consumed.'
 
 ```
-
-More options can be passed to job-map to configure the job before it
-is sent off. This project is still extremely alpha.
 
 ## License
 
