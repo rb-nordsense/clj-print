@@ -98,7 +98,6 @@ A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/d
 ;; Actually printing things is easy. `make-job` is a multi-method
 ;; that expects a nested map formatted as shown below (some parameters
 ;; are optional, see docs):
-
 (-> (make-job {:doc {:source "/Users/Roberto/Desktop/test.pdf"
                      :flavor (:autosense flavors/input-streams)
                      :attrs #{Chromaticity/MONOCHROME
@@ -108,9 +107,14 @@ A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/d
                :attrs #{MediaTray/MAIN}
                :listener-fn listeners/basic-listener})
     (submit!))
+;; 2014-Apr-25 16:28:02 -0400 rxacevedo INFO [clj-print.listeners] - Transfer complete: PrintEvent on
+;; sun.print.UnixPrintJob@3a29bb76
+;; 2014-Apr-25 16:28:02 -0400 rxacevedo INFO [clj-print.listeners] - No more events: PrintEvent on
+;; sun.print.UnixPrintJob@3a29bb76
+;; 2014-Apr-25 16:28:02 -0400 rxacevedo INFO [clj-print.listeners] - Job complete: PrintEvent on
+;; sun.print.UnixPrintJob@3a29bb76
 
-;; Or as a multi-job:
-
+;; Or as a 'multi-job':
 (let [jobs (make-job {:docs [{:source "/Users/Roberto/Desktop/test.pdf"
                               :flavor (:autosense flavors/input-streams)
                               :attrs #{Chromaticity/MONOCHROME
@@ -126,12 +130,28 @@ A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/d
                       :listener-fn listeners/basic-listener})
       job-pipe (lazy-map submit! jobs)]
   (take 2 job-pipe)) 
-
+;; (2014-Apr-25 16:28:04 -0400 rxacevedo INFO [clj-print.listeners] - Transfer complete: PrintEvent on
+;; sun.print.UnixPrintJob@1cdace08
+;; 2014-Apr-25 16:28:04 -0400 rxacevedo INFO [clj-print.listeners] - No more events: PrintEvent on
+;; sun.print.UnixPrintJob@1cdace08
+;; 2014-Apr-25 16:28:04 -0400 rxacevedo INFO [clj-print.listeners] - Job complete: PrintEvent on
+;; sun.print.UnixPrintJob@1cdace08
+;; 2014-Apr-25 16:28:04 -0400 rxacevedo INFO [clj-print.listeners] - Transfer complete: PrintEvent on
+;; sun.print.UnixPrintJob@7b256a62
+;; 2014-Apr-25 16:28:04 -0400 rxacevedo INFO [clj-print.listeners] - No more events: PrintEvent on
+;; sun.print.UnixPrintJob@7b256a62
+;; 2014-Apr-25 16:28:04 -0400 rxacevedo INFO [clj-print.listeners] - Job complete: PrintEvent on
+;; sun.print.UnixPrintJob@7b256a62
+;; nil nil)
+  
 ;; Because lazy-map is truly lazy (not chunked like map), submit! is
 ;; not computed until a job is taken from the pipe. This allows for
-;; print jobs to be 'consumed.'
+;; print jobs to be 'consumed.' 
 
 ```
+
+[Job pipe inspiration](http://oobaloo.co.uk/clojure-from-callbacks-to-sequences)    
+[Lazy-map idea](http://isti.bitbucket.org/2012/04/01/pipes-clojure-choco-1.html)
 
 ## License
 
