@@ -47,12 +47,13 @@
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
   {:since "0.0.1"}
-  [name]
-  (cond
-   (= :default name) (PrintServiceLookup/lookupDefaultPrintService)
-   (seq name) (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
-                (some (fn [^PrintService p] (when (= name (.. p getName)) p)) (printers nil attrs)))
-   :else nil))
+  ([] (printer :default))
+  ([name]
+     (cond
+      (= :default name) (PrintServiceLookup/lookupDefaultPrintService)
+      (seq name) (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
+                   (some (fn [^PrintService p] (when (= name (.. p getName)) p)) (printers nil attrs)))
+      :else nil)))
 
 (defn status
   "Returns a seq of this PrintService's status attributes."
