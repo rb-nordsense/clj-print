@@ -4,8 +4,12 @@ clj-print
 A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API.
 
 ## TODO
-- Make jobs identifiable/comparable so that they can be searched for
-- Cut down on type hinting where possible
+- [ ] Write extensive unit tests to ensure there are no possible NPEs
+- [ ] Add logging
+- [ ] Analyze Map vs Record performance (Maps provide structural sharing, but Records are typically more performant since they are compiled Java classes where the entries are final member variables (immutable))  
+    - [ ] JVisualVM 
+    - [ ] [criterium](https://github.com/hugoduncan/criterium) 
+- [ ] Think about the API - can a JobSpec be represented as JSON? If not, what would need to be changed?
 
 
 ## Usage
