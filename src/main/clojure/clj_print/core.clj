@@ -19,6 +19,7 @@
                                   HashPrintJobAttributeSet
                                   HashPrintRequestAttributeSet
                                   HashPrintServiceAttributeSet
+                                  Attribute
                                   DocAttribute
                                   PrintJobAttribute
                                   PrintRequestAttribute
@@ -47,12 +48,15 @@
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
   {:since "0.0.1"}
-  ([] (printer :default))
+  ([] (printer :default)) ;; TODO: If called with nil or "", should printer return (printer :default) or nil?
   ([name]
      (cond
       (= :default name) (PrintServiceLookup/lookupDefaultPrintService)
-      (seq name) (let [attrs (doto (HashAttributeSet.) (.add (PrinterName. name nil)))] 
-                   (some (fn [^PrintService p] (when (= name (.. p getName)) p)) (printers nil attrs)))
+      (seq name) (let [pname-obj (PrinterName. name nil)
+                       attrs  (make-set #{pname-obj} :attr)] 
+                   (some (fn [^PrintService p]
+                           (when (= name (.. p getName)) p))
+                         (printers nil attrs)))
       :else nil)))
 
 (defn status
@@ -116,7 +120,10 @@
    based on bound."
   [^clojure.lang.IPersistentSet s bound]
   (if (seq s)
-    (condp = bound        
+    (condp = bound
+      :attr (HashAttributeSet.
+                #^"[Ljavax.print.attribute.Attribute;"
+                (into-array Attribute s))
       :service (HashPrintServiceAttributeSet.
                 #^"[Ljavax.print.attribute.PrintServiceAttribute;"
                 (into-array PrintServiceAttribute s))
