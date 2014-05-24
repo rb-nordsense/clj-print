@@ -2,8 +2,7 @@
       :author "Roberto Acevedo"}
   clj-print.listeners
   (require (taoensso (timbre :as timbre)))
-  (:import (javax.print.event PrintJobListener))
-  (:gen-class))
+  (:import (javax.print.event PrintJobListener)))
 
 
 (def ^{:doc "How many jobs we've processed"}
@@ -41,7 +40,6 @@
       (timbre/info (str "No more events: " pje))
       (if (seq docs)
         ;; Continue printing
-        (.. this (printJobCompleted pje)))
-      )
+        (.. this (printJobCompleted pje))))
     (printJobRequiresAttention [this pje]
       (timbre/warn (str "Job requires attention: " pje)))))
