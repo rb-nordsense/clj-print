@@ -33,7 +33,6 @@
            (javax.print.event PrintJobListener)))
 
 ;; TODO: Write 'test' function that prints a test page when invoked on printer.
-;; TODO: What is gen-class good for?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Util ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -75,7 +74,7 @@
   "Returns a keyword representative of the document source's
    type."
   {:since "0.0.1"}
-  [source]
+  [^String source]
   (cond (try (.. (File. source) exists) (catch Throwable t)) :file
         (try (URL. source) (catch Throwable t)) :url
         :else nil))
@@ -99,19 +98,19 @@
      :request,
      :service"
   {:since "0.0.1"}
-  [attrs k]
+  [attrs t]
   (if (seq attrs)
     (let [mappings {:doc DocAttribute
                     :job PrintJobAttribute
                     :request PrintRequestAttribute
-                    :service PrintServiceAttribute}]
-      (every? (fn [attr] (instance? (k mappings) attr)) attrs))))
-
+                    :service PrintServiceAttribute}
+          is-attr (fn [attr] (instance? (t mappings) attr))]
+      (every? is-attr attrs))))
 
 (defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
    job map. SimpleDoc will throw an IllegalArgumentException if
-   the doc-flavor is not representative of the data pointed to
+   the DocFlavor is not representative of the data pointed to
    by doc-source."
   {:since "0.0.1"}
   [doc-spec]
@@ -123,8 +122,8 @@
                          :file (FileInputStream. source)
                          :url (URL. source)
                          nil)]
-    (if (valid-attrs? attrs :doc)
-      (SimpleDoc. resource flavor (-> attrs (make-set :doc))))))
+    (when (valid-attrs? attrs :doc)
+      (SimpleDoc. resource flavor (make-set attrs :doc)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Printers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -141,11 +140,11 @@
   "Returns the printer with the specified name from PrintServiceLookup.
    With no arguments, returns the system default printer."
   {:since "0.0.1"}
-  ([] (printer :default)) ;; TODO: If called with nil or "", should printer return (printer :default) or nil?
+  ([] (printer :default))
   ([name]
      (cond
       (= :default name) (PrintServiceLookup/lookupDefaultPrintService)
-      (seq name) (let [pname-obj (PrinterName. name nil)
+      (string? name) (let [pname-obj (PrinterName. name nil)
                        attrs  (make-set #{pname-obj} :attr)] 
                    (some (fn [^PrintService p]
                            (when (= name (.. p getName)) p))
@@ -192,11 +191,14 @@
     (let [{{doc-obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
-      (.. job (print @doc-obj attr-set))))
+      (.. job (print @doc-obj attr-set)))) ;; Still 
   (add-listener! [this listener-fn]
     (let [{:keys [^DocPrintJob job listener-fn]} this
           listener (listener-fn)]
       (doto job (.addPrintJobListener listener)))))
+
+;; TODO: Nobody wants to hand type this, create a convencience fn
+;; that takes arguments in order and retuns a JobSpec
 
 ;;  A JobSpec might look something like this:
 ;; {:doc {:source "/path/to/doc.pdf"
@@ -236,23 +238,29 @@
    3. A basic PrintJobListener that prints any events that occur
    on the DocPrintJob."
   {:since "0.0.1"}
-  (fn [spec] (apply (some-fn #{:doc} #{:docs}) (keys spec))))
+  (fn [spec] (some spec [:doc :docs])))
 
 (defmethod make-job :doc [spec]
   (let [{:keys [^PrintService printer ^PrintJobListener listener doc attrs]} spec
         {doc-attrs :attrs} doc]
-    (if (and (valid-attrs? doc-attrs :doc)
+    (when (and (valid-attrs? doc-attrs :doc)
              (valid-attrs? attrs :job))
       (letfn [(add-doc [spec]
                 (assoc-in spec [:doc :obj] (delay (make-doc doc))))
               (add-job [spec]
                 (assoc-in spec [:job] (.. printer createPrintJob)))]
-        (-> spec add-doc add-job map->JobSpec)))))
+        (-> spec
+            (add-doc)
+            (add-job)
+            (map->JobSpec))))))
 
 (defmethod make-job :docs [spec]
   (let [{docs :docs} spec]
     (for [doc docs]
-      (-> spec (dissoc :docs) (assoc :doc doc) make-job))))
+      (-> spec
+          (dissoc :docs)
+          (assoc :doc doc)
+          (make-job)))))
 
 ;; Old method of encapsulating a 'MultiJobSpec', most
 ;; values in a JobSpec will be singleton instances
@@ -272,7 +280,7 @@
 ;;       (letfn [(add-doc [doc-map]
 ;;                 (assoc-in doc-map [:obj] (delay (make-doc doc-map))))
 ;;               (add-docs [spec]
-;;                 (update-in spec [:docs] (fn [doc-list] (map add-doc  doc-list))))
+;;                 (update-in spec [:docs] (fn [doc-list] (map add-doc doc-list))))
 ;;               (add-jobs [spec]
 ;;                 (assoc-in spec [:jobs] (for [doc docs] (.. printer createPrintJob))))]
 ;;         (-> spec add-docs add-jobs map->MultiJobSpec)))))
