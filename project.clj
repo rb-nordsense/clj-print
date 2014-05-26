@@ -7,6 +7,7 @@
   :java-source-paths ["src/main/java"]
   :test-paths ["test" "src/test/clojure"]
   :resource-paths ["src/main/resources"]
+  :plugins [[lein-cloverage "1.0.2"]]
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [com.taoensso/timbre "3.1.6"]]
   :main clj-print.core

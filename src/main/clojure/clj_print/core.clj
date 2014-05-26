@@ -51,42 +51,22 @@
   "Takes a Clojure set and returns an AttributeSet implementation
    based on bound."
   [^clojure.lang.IPersistentSet s bound]
-  (if (seq s)
-    (condp = bound
-      :attr (HashAttributeSet.
-             #^"[Ljavax.print.attribute.Attribute;"
-             (into-array Attribute s))
-      :service (HashPrintServiceAttributeSet.
-                #^"[Ljavax.print.attribute.PrintServiceAttribute;"
-                (into-array PrintServiceAttribute s))
-      :job (HashPrintJobAttributeSet.
-            #^"[Ljavax.print.attribute.PrintJobAttribute;"
-            (into-array PrintJobAttribute s))
-      :doc (HashDocAttributeSet.
-            #^"[Ljavax.print.attribute.DocAttribute;"
-            (into-array DocAttribute s))
-      :request (HashPrintRequestAttributeSet.
-                #^"[Ljavax.print.attribute.PrintRequestAttribute;"
-                (into-array PrintRequestAttribute s))
-      nil)))
-
-(defn- choose-source-key
-  "Returns a keyword representative of the document source's
-   type."
-  {:since "0.0.1"}
-  [^String source]
-  (cond (try (.. (File. source) exists) (catch Throwable t)) :file
-        (try (URL. source) (catch Throwable t)) :url
-        :else nil))
-
-(defn- choose-flavor
-  "Attempts to guess the appropriate DocFlavor for the document.
-   Returns nil if no suitable DocFlavor is found."
-  {:since "0.0.1"}
-  [source]
-  (condp = (choose-source-key source)
-    :file (:autosense flavors/input-streams)
-    :url (:autosense flavors/urls)
+  (condp = bound
+    :attr (HashAttributeSet.
+           #^"[Ljavax.print.attribute.Attribute;"
+           (into-array Attribute s))
+    :service (HashPrintServiceAttributeSet.
+              #^"[Ljavax.print.attribute.PrintServiceAttribute;"
+              (into-array PrintServiceAttribute s))
+    :job (HashPrintJobAttributeSet.
+          #^"[Ljavax.print.attribute.PrintJobAttribute;"
+          (into-array PrintJobAttribute s))
+    :doc (HashDocAttributeSet.
+          #^"[Ljavax.print.attribute.DocAttribute;"
+          (into-array DocAttribute s))
+    :request (HashPrintRequestAttributeSet.
+              #^"[Ljavax.print.attribute.PrintRequestAttribute;"
+              (into-array PrintRequestAttribute s))
     nil))
 
 (defn- valid-attrs?
@@ -99,13 +79,42 @@
      :service"
   {:since "0.0.1"}
   [attrs t]
-  (if (seq attrs)
-    (let [mappings {:doc DocAttribute
-                    :job PrintJobAttribute
-                    :request PrintRequestAttribute
-                    :service PrintServiceAttribute}
-          is-attr (fn [attr] (instance? (t mappings) attr))]
-      (every? is-attr attrs))))
+  (let [mappings {:doc DocAttribute
+                  :job PrintJobAttribute
+                  :request PrintRequestAttribute
+                  :service PrintServiceAttribute}
+        is-attr (fn [attr] (instance? (t mappings) attr))]
+    (or (every? is-attr attrs)
+        (empty? attrs))))
+
+(defn- choose-source-key
+  "Returns a keyword representative of the document source's
+   type."
+  {:since "0.0.1"}
+  [^String source]
+  (cond (try (.. (io/as-file source) exists) (catch Throwable t)) :file
+        (try (io/as-url source) (catch Throwable t)) :url
+        :else nil))
+
+(defn- choose-flavor
+  "Attempts to guess the appropriate DocFlavor for the document.
+   Returns nil if no suitable DocFlavor is found."
+  {:since "0.0.1"}
+  [source]
+  (condp = (choose-source-key source)
+    :file (:autosense flavors/input-streams)
+    :url (:autosense flavors/urls)
+    nil))
+
+(defn- make-doc-data
+  "Small dispatch fn that returns the document data in the form
+   of the first type of object that it can be instantiated as."
+  {:since "0.0.1"}
+  [^String source]
+  (condp = (choose-source-key source)
+    :file (FileInputStream. source)
+    :url (URL. source)
+    nil))
 
 (defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
@@ -116,14 +125,11 @@
   [doc-spec]
   (let [{^String source :source} doc-spec
         {:keys [flavor attrs]
-         :or {flavor (choose-flavor source)
-              attrs #{MediaTray/MAIN}}} doc-spec
-              resource (condp = (choose-source-key source)
-                         :file (FileInputStream. source)
-                         :url (URL. source)
-                         nil)]
+         :or {flavor (choose-flavor source) ;; Attempt to guess if client does not specify
+              attrs #{}}} doc-spec ;; Sensible default
+              data (make-doc-data source)]
     (when (valid-attrs? attrs :doc)
-      (SimpleDoc. resource flavor (make-set attrs :doc)))))
+      (SimpleDoc. data flavor (make-set attrs :doc)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Printers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -191,7 +197,7 @@
     (let [{{doc-obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
-      (.. job (print @doc-obj attr-set)))) ;; Still 
+      (.. job (print @doc-obj attr-set))))
   (add-listener! [this listener-fn]
     (let [{:keys [^DocPrintJob job listener-fn]} this
           listener (listener-fn)]
@@ -241,9 +247,12 @@
   (fn [spec] (some spec [:doc :docs])))
 
 (defmethod make-job :doc [spec]
-  (let [{:keys [^PrintService printer ^PrintJobListener listener doc attrs]} spec
+  (let [{:keys [^PrintService printer
+                ^PrintJobListener listener
+                doc
+                attrs]} spec
         {doc-attrs :attrs} doc]
-    (when (and (valid-attrs? doc-attrs :doc)
+    (when (and (valid-attrs? doc-attrs :doc) ;; TODO: DON'T validate the doc here, the doc should be validated by make-doc
              (valid-attrs? attrs :job))
       (letfn [(add-doc [spec]
                 (assoc-in spec [:doc :obj] (delay (make-doc doc))))

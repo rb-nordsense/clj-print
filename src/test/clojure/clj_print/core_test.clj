@@ -20,3 +20,30 @@
   ;;                  :attrs (doto (javax.print.attribute.HashAttributeSet.)
   ;;                           (.add (javax.print.attribute.standard.MediaTray/MAIN))))))
   )
+
+;; TODO Test make-doc in this fashion (varying arities)
+;; clj-print.core> (make-doc {:source "/Users/Roberto/Desktop/test.txt"
+;;                            :flavor (:autosense flavors/input-streams)
+;;                            :attrs #{}})
+;; ;; => #<SimpleDoc javax.print.SimpleDoc@b76d58f>
+;; clj-print.core> (make-doc {:source "/Users/Roberto/Desktop/test.txt"
+;;                            :flavor (:autosense flavors/input-streams)
+;;                            :attrs nil})
+;; ;; => #<SimpleDoc javax.print.SimpleDoc@173c0e5c>
+;; clj-print.core> (doc empty?)
+;; -------------------------
+;; clojure.core/empty?
+;; ([coll])
+;;   Returns true if coll has no items - same as (not (seq coll)).
+;;   Please use the idiom (seq x) rather than (not (empty? x))
+;; ;; => nil
+;; clj-print.core> (make-doc {:source "/Users/Roberto/Desktop/test.txt"
+;;                            :flavor (:autosense flavors/input-streams)
+;;                            :attrs nil})
+;; ;; => #<SimpleDoc javax.print.SimpleDoc@748c9a21>
+;; clj-print.core> (make-doc {:source "/Users/Roberto/Desktop/test.txt"
+;;                            :flavor (:autosense flavors/input-streams)})
+;; ;; => #<SimpleDoc javax.print.SimpleDoc@a992139>
+;; clj-print.core> (make-doc {:source "/Users/Roberto/Desktop/test.txt"})
+;; ;; => #<SimpleDoc javax.print.SimpleDoc@6a2e603a>
+;; clj-print.core> 
