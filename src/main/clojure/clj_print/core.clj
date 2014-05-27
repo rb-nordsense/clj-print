@@ -85,7 +85,7 @@
                   :service PrintServiceAttribute}
         is-attr (fn [attr] (instance? (t mappings) attr))]
     (or (every? is-attr attrs)
-        (empty? attrs))))
+        (empty? attrs)))) ;; TODO: Doesn't check type bound of set
 
 (defn- choose-source-key
   "Returns a keyword representative of the document source's
@@ -197,7 +197,7 @@
     (let [{{doc-obj :obj} :doc} this
           {:keys [^DocPrintJob job attrs]} this
           attr-set (make-set attrs :request)]
-      (.. job (print @doc-obj attr-set))))
+      (.. job (print doc-obj attr-set))))
   (add-listener! [this listener-fn]
     (let [{:keys [^DocPrintJob job listener-fn]} this
           listener (listener-fn)]
@@ -247,21 +247,21 @@
   (fn [spec] (some spec [:doc :docs])))
 
 (defmethod make-job :doc [spec]
-  (let [{:keys [^PrintService printer
-                ^PrintJobListener listener
-                doc
-                attrs]} spec
-        {doc-attrs :attrs} doc]
-    (when (and (valid-attrs? doc-attrs :doc) ;; TODO: DON'T validate the doc here, the doc should be validated by make-doc
-             (valid-attrs? attrs :job))
+  (let [{doc :doc attrs :attrs} spec
+        {:keys [^PrintService printer
+                ^PrintJobListener listener]
+         :or {printer (printer :default) ;; TODO: Test these defaults
+              listener listeners/basic-listener}} spec
+              {doc-attrs :attrs} doc]
+    (when (valid-attrs? attrs :job)
       (letfn [(add-doc [spec]
-                (assoc-in spec [:doc :obj] (delay (make-doc doc))))
+                (assoc-in spec [:doc :obj] (make-doc doc)))
               (add-job [spec]
                 (assoc-in spec [:job] (.. printer createPrintJob)))]
         (-> spec
             (add-doc)
             (add-job)
-            (map->JobSpec))))))
+            (map->JobSpec)))))) ;; Spec seems to be dependent on having listner-fn passed in here
 
 (defmethod make-job :docs [spec]
   (let [{docs :docs} spec]
