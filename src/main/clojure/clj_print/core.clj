@@ -229,22 +229,24 @@
 
 (defmulti make-job
   "Returns a JobSpec map that is the result of
-   assoc'ing required values to it. The values are:
+  assoc'ing required values to it. The values are:
 
-   1. A SimpleDoc object (wrapped in a Delay) made from
-   the map keyed at :doc.
-   2. A DocPrintJob object that is retrieved from the
-   PrintService.
+  1. A SimpleDoc object (wrapped in a Delay) made from
+  the map keyed at :doc.
+  2. A DocPrintJob object that is retrieved from the
+  PrintService.
 
-   The following defaults are also assoc'd to the job-spec
-   if no values are supplied for them:
+  The following defaults are also assoc'd to the job-spec
+  if no values are supplied for them:
 
-   1. The default system printer.
-   2. An attribute set with the single attribute MediaTray/MAIN.
-   3. A basic PrintJobListener that prints any events that occur
-   on the DocPrintJob."
+  1. The default system printer.
+  2. An attribute set with the single attribute MediaTray/MAIN.
+  3. A basic PrintJobListener that prints any events that occur
+  on the DocPrintJob."
   {:since "0.0.1"}
-  (fn [spec] (some spec [:doc :docs])))
+  (fn [spec]
+    (some #(and spec %)
+          [:doc :docs])))
 
 (defmethod make-job :doc [spec]
   (let [{doc :doc attrs :attrs} spec
