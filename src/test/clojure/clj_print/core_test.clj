@@ -7,10 +7,8 @@
 ;; TODO: Test trays
 
 (deftest printers-test
-  (testing "printer returns the default printer when an empty name is provided"
-    (is (= (printer :default) (javax.print.PrintServiceLookup/lookupDefaultPrintService)))
-    (is (= (printer "") (javax.print.PrintServiceLookup/lookupDefaultPrintService)))
-    (is (= (printer nil) (javax.print.PrintServiceLookup/lookupDefaultPrintService))))
+  (testing "printer returns the default printer when :default is provided"
+    (is (= (printer :default) (javax.print.PrintServiceLookup/lookupDefaultPrintService))))
   ;; (testing "Printers works with all possible arugment arities"
   ;;   (seq (printers))
   ;;   (seq (printers :flavor javax.print.DocFlavor$INPUT_STREAM/AUTOSENSE))

@@ -1,16 +1,21 @@
 clj-print
 =======
 
-A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html) API.
+A Clojure library that wraps the
+[javax.print](http://docs.oracle.com/javase/7/docs/api/javax/print/package-summary.html)
+API.
+
+This project is unfinished, it was originally intended to be used at
+my work, but ended up just being a fun exercise for me. It was an
+excuse for me to try out records, multi-methods and Clojure in
+general.
 
 ## TODO
-- [ ] Write extensive unit tests to ensure there are no possible NPEs
-- [ ] Add logging
-- [ ] Analyze Map vs Record performance (Maps provide structural sharing, but Records are typically more performant since they are compiled Java classes where the entries are final member variables (immutable))  
-    - [ ] JVisualVM 
-    - [ ] [criterium](https://github.com/hugoduncan/criterium) 
-- [ ] Think about the API - can a JobSpec be represented as JSON? If not, what would need to be changed?
-
+- [ ] Tests
+- [ ] Logging
+- [ ] Map vs Record performance (structural sharing vs compiled Java classes with final member variables).
+- [ ] API is still a bit unwieldy (but at least it's REPL-y!)
+- [ ] Update README
 
 ## Usage
 
@@ -149,12 +154,12 @@ A Clojure library that wraps the [javax.print](http://docs.oracle.com/javase/7/d
 ;; nil nil)
   
 ;; Because lazy-map is truly lazy (not chunked like map), submit! is
-;; not computed until a job is taken from the pipe. This allows for
-;; print jobs to be 'consumed.' 
+;; not computed until a job is taken from the "pipe." This allows for
+;; print jobs to be "consumed." 
 
 ```
 
-[Job pipe inspiration](http://oobaloo.co.uk/clojure-from-callbacks-to-sequences)    
+[Job pipe idea](http://oobaloo.co.uk/clojure-from-callbacks-to-sequences)    
 [Lazy-map idea](http://isti.bitbucket.org/2012/04/01/pipes-clojure-choco-1.html)
 
 ## License

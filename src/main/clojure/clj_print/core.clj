@@ -32,11 +32,9 @@
                                            PrintQuality)
            (javax.print.event PrintJobListener)))
 
-;; TODO: Write 'test' function that prints a test page when invoked on printer.
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Util ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn lazy-map
+(defn- lazy-map
   "A lazier version of map so that calling (take 1 (map submit! multidoc))
   on a lazy-seq made by multimethod make-job :docs doesn't cause
   print events to be realized sooner than they should be due to
@@ -49,7 +47,7 @@
 
 (defn- make-set
   "Takes a Clojure set and returns an AttributeSet implementation
-   based on bound."
+  based on bound."
   [^clojure.lang.IPersistentSet s bound]
   (condp = bound
     :attr (HashAttributeSet.
@@ -71,12 +69,12 @@
 
 (defn- valid-attrs?
   "Returns true if all of the Attribute objects in
-   attrs are bounded by the type specified by k.
-   Valid keywords for k are:
-     :doc
-     :job
-     :request,
-     :service"
+  attrs are bounded by the type specified by k.
+  Valid keywords for k are:
+  :doc
+  :job
+  :request,
+  :service"
   {:since "0.0.1"}
   [attrs t]
   (let [mappings {:doc DocAttribute
@@ -85,11 +83,11 @@
                   :service PrintServiceAttribute}
         is-attr (fn [attr] (instance? (t mappings) attr))]
     (or (every? is-attr attrs)
-        (empty? attrs)))) ;; TODO: Doesn't check type bound of set
+        (empty? attrs))))
 
 (defn- choose-source-key
   "Returns a keyword representative of the document source's
-   type."
+  type."
   {:since "0.0.1"}
   [^String source]
   (cond (try (.. (io/as-file source) exists) (catch Throwable t)) :file
@@ -98,7 +96,7 @@
 
 (defn- choose-flavor
   "Attempts to guess the appropriate DocFlavor for the document.
-   Returns nil if no suitable DocFlavor is found."
+  Returns nil if no suitable DocFlavor is found."
   {:since "0.0.1"}
   [source]
   (condp = (choose-source-key source)
@@ -108,7 +106,7 @@
 
 (defn- make-doc-data
   "Small dispatch fn that returns the document data in the form
-   of the first type of object that it can be instantiated as."
+  of the first type of object that it can be instantiated as."
   {:since "0.0.1"}
   [^String source]
   (condp = (choose-source-key source)
@@ -118,9 +116,9 @@
 
 (defn- make-doc
   "Returns a javax.print.Doc object for the print data in this
-   job map. SimpleDoc will throw an IllegalArgumentException if
-   the DocFlavor is not representative of the data pointed to
-   by doc-source."
+  job map. SimpleDoc will throw an IllegalArgumentException if
+  the DocFlavor is not representative of the data pointed to
+  by doc-source."
   {:since "0.0.1"}
   [doc-spec]
   (let [{^String source :source} doc-spec
@@ -135,26 +133,26 @@
 
 (defn printers
   "Returns a seq of printers that supports the specified
-   DocFlavor and Attributes acquired from PrintServiceLookup.
-   With no arguments, returns a seq of all printers that
-   PrintServiceLookup is aware of."
+  DocFlavor and Attributes acquired from PrintServiceLookup.
+  With no arguments, returns a seq of all printers that
+  PrintServiceLookup is aware of."
   {:since "0.0.1"}
   ([& {:keys [^DocFlavor flavor ^AttributeSet attrs]}]
      (seq (PrintServiceLookup/lookupPrintServices flavor attrs))))
 
 (defn printer 
   "Returns the printer with the specified name from PrintServiceLookup.
-   With no arguments, returns the system default printer."
+  With no arguments, returns the system default printer."
   {:since "0.0.1"}
   ([] (printer :default))
   ([name]
      (cond
       (= :default name) (PrintServiceLookup/lookupDefaultPrintService)
       (string? name) (let [pname-obj (PrinterName. name nil)
-                       attrs  (make-set #{pname-obj} :attr)] 
-                   (some (fn [^PrintService p]
-                           (when (= name (.. p getName)) p))
-                         (printers nil attrs)))
+                           attrs  (make-set #{pname-obj} :attr)] 
+                       (some (fn [^PrintService p]
+                               (when (= name (.. p getName)) p))
+                             (printers nil attrs)))
       :else nil)))
 
 (defn status
@@ -163,7 +161,6 @@
   [^PrintService p]
   (-> p .getAttributes .toArray seq))
 
-;; TODO: Is this the best way to do this?
 (defn attributes
   "Returns a flattened seq of this PrintService's supported
   atributes, for all of its supported Attribute classes."
@@ -172,7 +169,8 @@
   (let [unflattened (for [c (.. p getSupportedAttributeCategories)]
                       (.. p (getSupportedAttributeValues c nil nil)))]
     (flatten
-     (map (fn [e] (if (.. ^Class (type e) isArray) (seq e) e))
+     (map (fn [e] (when-not (nil? e)
+                   (if (.. ^Class (type e) isArray) (seq e) e)))
           unflattened))))
 
 (defn trays
@@ -203,16 +201,13 @@
           listener (listener-fn)]
       (doto job (.addPrintJobListener listener)))))
 
-;; TODO: Nobody wants to hand type this, create a convencience fn
-;; that takes arguments in order and retuns a JobSpec
-
 ;;  A JobSpec might look something like this:
 ;; {:doc {:source "/path/to/doc.pdf"
 ;;        :flavor (:autosense flavors/input-streams)
 ;;        :attrs #{Chromaticity/MONOCHROME
 ;;                 PrintQuality/HIGH
 ;;                 OrientationRequested/PORTRAIT}}
-;;  :printer (printer "HP_Color_LaserJet_CP3505")
+;;  :printer (printer "IM_KILL_TREES")
 ;;  :attrs #{(Copies. 5) MediaTray/MAIN}
 ;;  :listener-fn listeners/basic-listener}
 
@@ -245,14 +240,14 @@
   on the DocPrintJob."
   {:since "0.0.1"}
   (fn [spec]
-    (some #(and spec %)
+    (some #(when (spec %) %)
           [:doc :docs])))
 
 (defmethod make-job :doc [spec]
   (let [{doc :doc attrs :attrs} spec
         {:keys [^PrintService printer
                 ^PrintJobListener listener]
-         :or {printer (printer :default) ;; TODO: Test these defaults
+         :or {printer (printer :default)
               listener listeners/basic-listener}} spec
               {doc-attrs :attrs} doc]
     (when (valid-attrs? attrs :job)
@@ -263,45 +258,16 @@
         (-> spec
             (add-doc)
             (add-job)
-            (map->JobSpec)))))) ;; Spec seems to be dependent on having listner-fn passed in here
+            (map->JobSpec))))))
 
 (defmethod make-job :docs [spec]
   (let [{docs :docs} spec]
-    (for [doc docs]
+    (for [doc docs]      
       (-> spec
           (dissoc :docs)
           (assoc :doc doc)
           (make-job)))))
 
-;; Old method of encapsulating a 'MultiJobSpec', most
-;; values in a JobSpec will be singleton instances
-;; anyways, so structural sharing may not be necessary,
-;; though I'll throw this in here anyways:
-;;
-;; TODO: Analyze memory consumption in JVisualVM for:
-;; 1. maps vs records being used for job specs in general
-;; 2. Using MultiJobSpec vs just using 
-;;
-;; (defmethod make-job :docs [spec]
-;;   (let [{:keys [^PrintService printer
-;;                 ^PrintJobListener listener
-;;                 docs attrs]} spec]
-;;     (if (and (every? (fn [d] (valid-attrs? d :doc)) (map :attrs docs))
-;;              (valid-attrs? attrs :job))
-;;       (letfn [(add-doc [doc-map]
-;;                 (assoc-in doc-map [:obj] (delay (make-doc doc-map))))
-;;               (add-docs [spec]
-;;                 (update-in spec [:docs] (fn [doc-list] (map add-doc doc-list))))
-;;               (add-jobs [spec]
-;;                 (assoc-in spec [:jobs] (for [doc docs] (.. printer createPrintJob))))]
-;;         (-> spec add-docs add-jobs map->MultiJobSpec)))))
-
 (defn -main
-  "Main method, expects each value in args to be the string
-   representation of a clojure map to be read by the reader."
-  {:since "0.0.1"}
   [& args]
-  (if (seq args)
-    (doseq [v args]
-      (let [spec (read-string v)]
-        (-> (make-job spec) submit!)))))
+  (println "Hello printing!"))
