@@ -7,7 +7,7 @@ API.
 
 This project is unfinished, it was originally intended to be used at
 my work, but ended up just being a fun exercise for me. It was an
-excuse for me to try out records, multi-methods and Clojure in
+excuse for me to try out records, multi-methods, and Clojure in
 general.
 
 ## TODO
